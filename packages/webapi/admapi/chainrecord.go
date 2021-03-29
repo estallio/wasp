@@ -6,10 +6,10 @@ import (
 
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/model"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
+	"github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 	"github.com/pangpanglabs/echoswagger/v2"
 )
@@ -45,6 +45,7 @@ func handlePutChainRecord(c echo.Context) error {
 
 	bd := req.ChainRecord()
 
+	registry := registry.DefaultRegistry()
 	bd2, err := registry.GetChainRecord(&bd.ChainID)
 	if err != nil {
 		return err
@@ -66,7 +67,7 @@ func handleGetChainRecord(c echo.Context) error {
 	if err != nil {
 		return httperrors.BadRequest(err.Error())
 	}
-	bd, err := registry.GetChainRecord(&chainID)
+	bd, err := registry.DefaultRegistry().GetChainRecord(&chainID)
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func handleGetChainRecord(c echo.Context) error {
 }
 
 func handleGetChainRecordList(c echo.Context) error {
-	lst, err := registry.GetChainRecords()
+	lst, err := registry.DefaultRegistry().GetChainRecords()
 	if err != nil {
 		return err
 	}

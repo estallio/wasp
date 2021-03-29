@@ -19,7 +19,7 @@ import (
 	"github.com/iotaledger/wasp/packages/vm/processors"
 )
 
-func init() {
+func Init() {
 	chain.RegisterChainConstructor(newCommitteeObj)
 }
 
@@ -301,7 +301,7 @@ func (c *chainObj) GetRequestProcessingStatus(reqID *coretypes.RequestID) chain.
 			return chain.RequestProcessingStatusBacklog
 		}
 	}
-	processed, err := state.IsRequestCompleted(c.ID(), reqID)
+	processed, err := state.IsRequestCompleted(c.ID(), reqID, c.rProvider)
 	if err != nil || !processed {
 		return chain.RequestProcessingStatusUnknown
 	}

@@ -1,3 +1,5 @@
+//Implements packages/registry.RegistryProvider methods (should be moved to
+//packages/chain.RegistryProvider) for packages/registry.Impl object
 package registry
 
 import (
@@ -11,10 +13,10 @@ import (
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/publisher"
 	"github.com/iotaledger/wasp/packages/util"
-	"github.com/iotaledger/wasp/plugins/database"
 	"github.com/mr-tron/base58"
 )
 
+// TODO: move struct to chain package... or not?
 // ChainRecord is a minimum data needed to load a committee for the chain
 // it is up to the node (not smart contract) to check authorizations to create/update this record
 type ChainRecord struct {
@@ -28,7 +30,7 @@ func dbkeyChainRecord(chainID *coretypes.ChainID) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeChainRecord, chainID[:])
 }
 
-func SaveChainRecord(bd *ChainRecord) error {
+func (rImplThis *Impl) SaveChainRecord(bd *ChainRecord) error {
 	if bd.ChainID == coretypes.NilChainID {
 		return fmt.Errorf("can be empty chain id")
 	}
@@ -39,15 +41,15 @@ func SaveChainRecord(bd *ChainRecord) error {
 	if err := bd.Write(&buf); err != nil {
 		return err
 	}
-	if err := database.GetRegistryPartition().Set(dbkeyChainRecord(&bd.ChainID), buf.Bytes()); err != nil {
+	if err := rImplThis.dbProvider.GetRegistryPartition().Set(dbkeyChainRecord(&bd.ChainID), buf.Bytes()); err != nil {
 		return err
 	}
 	publisher.Publish("chainrec", bd.ChainID.String(), bd.Color.String())
 	return nil
 }
 
-func GetChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
-	data, err := database.GetRegistryPartition().Get(dbkeyChainRecord(chainID))
+func (rImplThis *Impl) GetChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
+	data, err := rImplThis.dbProvider.GetRegistryPartition().Get(dbkeyChainRecord(chainID))
 	if err == kvstore.ErrKeyNotFound {
 		return nil, nil
 	}
@@ -61,8 +63,8 @@ func GetChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
 	return ret, nil
 }
 
-func UpdateChainRecord(chainID *coretypes.ChainID, f func(*ChainRecord) bool) (*ChainRecord, error) {
-	bd, err := GetChainRecord(chainID)
+func (rImplThis *Impl) UpdateChainRecord(chainID *coretypes.ChainID, f func(*ChainRecord) bool) (*ChainRecord, error) {
+	bd, err := rImplThis.GetChainRecord(chainID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +72,7 @@ func UpdateChainRecord(chainID *coretypes.ChainID, f func(*ChainRecord) bool) (*
 		return nil, fmt.Errorf("no chain record found for address %s", chainID.String())
 	}
 	if f(bd) {
-		err = SaveChainRecord(bd)
+		err = rImplThis.SaveChainRecord(bd)
 		if err != nil {
 			return nil, err
 		}
@@ -78,8 +80,8 @@ func UpdateChainRecord(chainID *coretypes.ChainID, f func(*ChainRecord) bool) (*
 	return bd, nil
 }
 
-func ActivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
-	return UpdateChainRecord(chainID, func(bd *ChainRecord) bool {
+func (rImplThis *Impl) ActivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
+	return rImplThis.UpdateChainRecord(chainID, func(bd *ChainRecord) bool {
 		if bd.Active {
 			return false
 		}
@@ -88,8 +90,8 @@ func ActivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
 	})
 }
 
-func DeactivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
-	return UpdateChainRecord(chainID, func(bd *ChainRecord) bool {
+func (rImplThis *Impl) DeactivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
+	return rImplThis.UpdateChainRecord(chainID, func(bd *ChainRecord) bool {
 		if !bd.Active {
 			return false
 		}
@@ -98,8 +100,8 @@ func DeactivateChainRecord(chainID *coretypes.ChainID) (*ChainRecord, error) {
 	})
 }
 
-func GetChainRecords() ([]*ChainRecord, error) {
-	db := database.GetRegistryPartition()
+func (rImplThis *Impl) GetChainRecords() ([]*ChainRecord, error) {
+	db := rImplThis.dbProvider.GetRegistryPartition()
 	ret := make([]*ChainRecord, 0)
 
 	err := db.Iterate([]byte{dbprovider.ObjectTypeChainRecord}, func(key kvstore.Key, value kvstore.Value) bool {
@@ -107,13 +109,14 @@ func GetChainRecords() ([]*ChainRecord, error) {
 		if err := bd.Read(bytes.NewReader(value)); err == nil {
 			ret = append(ret, bd)
 		} else {
-			log.Warnf("corrupted chain record with key %s", base58.Encode(key))
+			rImplThis.log.Warnf("corrupted chain record with key %s", base58.Encode(key))
 		}
 		return true
 	})
 	return ret, err
 }
 
+// TODO: move fun to chain package... or not?
 func (bd *ChainRecord) Write(w io.Writer) error {
 	if err := bd.ChainID.Write(w); err != nil {
 		return err
@@ -130,6 +133,7 @@ func (bd *ChainRecord) Write(w io.Writer) error {
 	return nil
 }
 
+// TODO: move fun to chain package... or not?
 func (bd *ChainRecord) Read(r io.Reader) error {
 	var err error
 	if err = bd.ChainID.Read(r); err != nil {
@@ -147,6 +151,7 @@ func (bd *ChainRecord) Read(r io.Reader) error {
 	return nil
 }
 
+// TODO: move fun to chain package... or not?
 func (bd *ChainRecord) String() string {
 	ret := "      Target: " + bd.ChainID.String() + "\n"
 	ret += "      Color: " + bd.Color.String() + "\n"

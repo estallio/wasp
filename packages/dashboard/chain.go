@@ -14,6 +14,7 @@ import (
 	"github.com/iotaledger/wasp/packages/vm/core/accounts"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/plugins/chains"
+	registry_plgn "github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 )
 
@@ -44,13 +45,14 @@ func handleChain(c echo.Context) error {
 		ChainID:            chainid,
 	}
 
+	registry := registry_plgn.DefaultRegistry()
 	result.ChainRecord, err = registry.GetChainRecord(&chainid)
 	if err != nil {
 		return err
 	}
 
 	if result.ChainRecord != nil && result.ChainRecord.Active {
-		result.VirtualState, result.Block, _, err = state.LoadSolidState(&chainid)
+		result.VirtualState, result.Block, _, err = state.LoadSolidState(&chainid, registry)
 		if err != nil {
 			return err
 		}

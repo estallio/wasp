@@ -36,7 +36,8 @@ func configure(_ *node.Plugin) {
 
 func run(_ *node.Plugin) {
 	err := daemon.BackgroundWorker(PluginName, func(shutdownSignal <-chan struct{}) {
-		chainRecords, err := registry_pkg.GetChainRecords()
+		registry := registry.DefaultRegistry()
+		chainRecords, err := registry.GetChainRecords()
 		if err != nil {
 			log.Error("failed to load chain records from registry: %v", err)
 			return
@@ -50,7 +51,7 @@ func run(_ *node.Plugin) {
 
 		for _, chr := range chainRecords {
 			if chr.Active {
-				if err := ActivateChain(chr); err != nil {
+				if err := ActivateChain(chr, registry); err != nil {
 					log.Errorf("cannot activate committee %s: %v", chr.ChainID, err)
 				}
 			}
@@ -79,7 +80,7 @@ func run(_ *node.Plugin) {
 // - creates chain object
 // - insert it into the runtime registry
 // - subscribes for related transactions in he IOTA node
-func ActivateChain(chr *registry_pkg.ChainRecord) error {
+func ActivateChain(chr *registry_pkg.ChainRecord, registry *registry_pkg.Impl) error {
 	chainsMutex.Lock()
 	defer chainsMutex.Unlock()
 
@@ -93,8 +94,7 @@ func ActivateChain(chr *registry_pkg.ChainRecord) error {
 		return nil
 	}
 	// create new chain object
-	defaultRegistry := registry.DefaultRegistry()
-	c := chain.New(chr, log, peering.DefaultNetworkProvider(), defaultRegistry, defaultRegistry, func() {
+	c := chain.New(chr, log, peering.DefaultNetworkProvider(), registry, registry, registry, func() {
 		nodeconn.Subscribe((address.Address)(chr.ChainID), chr.Color)
 	})
 	if c != nil {

@@ -28,7 +28,7 @@ var (
 // version is stored in niladdr partition.
 // it consists of one byte of version and the hash (checksum) of that one byte
 func checkDatabaseVersion() error {
-	db := GetPartition(&coretypes.NilChainID)
+	db := dbProvider.GetPartition(&coretypes.NilChainID)
 	ver, err := db.Get(dbprovider.MakeKey(dbprovider.ObjectTypeDBSchemaVersion))
 
 	var versiondata [1 + hashing.HashSize]byte

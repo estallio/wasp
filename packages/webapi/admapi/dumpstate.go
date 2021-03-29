@@ -12,6 +12,7 @@ import (
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/model"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
+	"github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 	"github.com/pangpanglabs/echoswagger/v2"
 )
@@ -31,7 +32,7 @@ func handleDumpSCState(c echo.Context) error {
 	}
 
 	chainID := contractID.ChainID()
-	virtualState, _, ok, err := state.LoadSolidState(&chainID)
+	virtualState, _, ok, err := state.LoadSolidState(&chainID, registry.DefaultRegistry())
 	if err != nil {
 		return err
 	}

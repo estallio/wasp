@@ -117,7 +117,7 @@ func (req *request) hasSolidArgs() bool {
 }
 
 func (op *operator) isRequestProcessed(reqid *coretypes.RequestID) bool {
-	processed, err := state.IsRequestCompleted(op.chain.ID(), reqid)
+	processed, err := state.IsRequestCompleted(op.chain.ID(), reqid, op.rProvider)
 	if err != nil {
 		panic(err)
 	}
@@ -129,7 +129,7 @@ func (op *operator) deleteCompletedRequests() error {
 	toDelete := make([]*coretypes.RequestID, 0)
 
 	for _, req := range op.requests {
-		if completed, err := state.IsRequestCompleted(op.chain.ID(), &req.reqId); err != nil {
+		if completed, err := state.IsRequestCompleted(op.chain.ID(), &req.reqId, op.rProvider); err != nil {
 			return err
 		} else {
 			if completed {

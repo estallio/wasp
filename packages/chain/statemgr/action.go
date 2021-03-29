@@ -304,7 +304,7 @@ func (sm *stateManager) addPendingBlock(block state.Block) bool {
 
 func (sm *stateManager) createStateToApprove() state.VirtualState {
 	if sm.solidState == nil {
-		return state.NewEmptyVirtualState(sm.chain.ID())
+		return state.NewEmptyVirtualState(sm.chain.ID(), sm.rProvider)
 	}
 	return sm.solidState.Clone()
 }

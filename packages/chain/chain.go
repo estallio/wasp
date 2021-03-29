@@ -98,6 +98,7 @@ type chainConstructor func(
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
+	rProvider registry.RegistryProvider,
 	onActivation func(),
 ) Chain
 
@@ -120,7 +121,8 @@ func New(
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
+	rProvider registry.RegistryProvider,
 	onActivation func(),
 ) Chain {
-	return constructorNew(chr, log, netProvider, dksProvider, blobProvider, onActivation)
+	return constructorNew(chr, log, netProvider, dksProvider, blobProvider, rProvider, onActivation)
 }

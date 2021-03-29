@@ -5,6 +5,7 @@ import (
 
 	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/plugins/chains"
+	registry_plgn "github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 )
 
@@ -33,7 +34,7 @@ func handleChainList(c echo.Context) error {
 }
 
 func fetchChains() ([]*ChainOverview, error) {
-	crs, err := registry.GetChainRecords()
+	crs, err := registry_plgn.DefaultRegistry().GetChainRecords()
 	if err != nil {
 		return nil, err
 	}

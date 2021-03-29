@@ -53,6 +53,7 @@ type chainObj struct {
 	peersAttachRef        interface{}
 	dksProvider           tcrypto.RegistryProvider
 	blobProvider          coretypes.BlobCache
+	rProvider             registry.RegistryProvider
 }
 
 func requestIDCaller(handler interface{}, params ...interface{}) {
@@ -65,6 +66,7 @@ func newCommitteeObj(
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
+	rProvider registry.RegistryProvider,
 	onActivation func(),
 ) chain.Chain {
 	var err error
@@ -111,6 +113,7 @@ func newCommitteeObj(
 		netProvider:  netProvider,
 		dksProvider:  dksProvider,
 		blobProvider: blobProvider,
+		rProvider:    rProvider,
 	}
 	ret.peersAttachRef = peers.Attach(&ret.chainID, func(recv *peering.RecvEvent) {
 		ret.ReceiveMessage(recv.Msg)
@@ -120,8 +123,8 @@ func newCommitteeObj(
 	ret.size = dkshare.N
 	ret.quorum = dkshare.T
 
-	ret.stateMgr = statemgr.New(ret, ret.log)
-	ret.operator = consensus.NewOperator(ret, dkshare, ret.log)
+	ret.stateMgr = statemgr.New(ret, ret.log, rProvider)
+	ret.operator = consensus.NewOperator(ret, dkshare, ret.log, rProvider)
 	ret.isCommitteeNode.Store(true)
 	go func() {
 		for msg := range ret.chMsg {

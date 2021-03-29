@@ -6,10 +6,10 @@ import (
 
 	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
 	"github.com/iotaledger/wasp/plugins/chains"
+	"github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 	"github.com/pangpanglabs/echoswagger/v2"
 )
@@ -30,13 +30,14 @@ func handleActivateChain(c echo.Context) error {
 		return httperrors.BadRequest(fmt.Sprintf("Invalid SC address: %s", c.Param("address")))
 	}
 	chainID := (coretypes.ChainID)(scAddress)
+	registry := registry.DefaultRegistry()
 	bd, err := registry.ActivateChainRecord(&chainID)
 	if err != nil {
 		return err
 	}
 
 	log.Debugw("calling committees.ActivateChain", "chainID", bd.ChainID.String())
-	if err := chains.ActivateChain(bd); err != nil {
+	if err := chains.ActivateChain(bd, registry); err != nil {
 		return err
 	}
 
@@ -50,7 +51,7 @@ func handleDeactivateChain(c echo.Context) error {
 	}
 
 	chainID := (coretypes.ChainID)(scAddress)
-	bd, err := registry.DeactivateChainRecord(&chainID)
+	bd, err := registry.DefaultRegistry().DeactivateChainRecord(&chainID)
 	if err != nil {
 		return err
 	}

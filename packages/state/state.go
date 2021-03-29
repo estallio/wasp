@@ -11,8 +11,8 @@ import (
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv"
 	"github.com/iotaledger/wasp/packages/kv/buffered"
+	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/util"
-	"github.com/iotaledger/wasp/plugins/database"
 )
 
 type virtualState struct {
@@ -34,12 +34,12 @@ func NewVirtualState(db kvstore.KVStore, chainID *coretypes.ChainID) *virtualSta
 	}
 }
 
-func NewEmptyVirtualState(chainID *coretypes.ChainID) *virtualState {
-	return NewVirtualState(getSCPartition(chainID), chainID)
+func NewEmptyVirtualState(chainID *coretypes.ChainID, rProvider registry.RegistryProvider) *virtualState {
+	return NewVirtualState(getSCPartition(rProvider, chainID), chainID)
 }
 
-func getSCPartition(chainID *coretypes.ChainID) kvstore.KVStore {
-	return database.GetPartition(chainID)
+func getSCPartition(rProvider registry.RegistryProvider, chainID *coretypes.ChainID) kvstore.KVStore {
+	return rProvider.GetDBProvider().GetPartition(chainID)
 }
 
 func subRealm(db kvstore.KVStore, realm []byte) kvstore.KVStore {
@@ -197,8 +197,8 @@ func (vs *virtualState) CommitToDb(b Block) error {
 	return nil
 }
 
-func LoadSolidState(chainID *coretypes.ChainID) (VirtualState, Block, bool, error) {
-	return loadSolidState(getSCPartition(chainID), chainID)
+func LoadSolidState(chainID *coretypes.ChainID, rProvider registry.RegistryProvider) (VirtualState, Block, bool, error) {
+	return loadSolidState(getSCPartition(rProvider, chainID), chainID)
 }
 
 func loadSolidState(db kvstore.KVStore, chainID *coretypes.ChainID) (VirtualState, Block, bool, error) {
@@ -240,6 +240,6 @@ func dbkeyRequest(reqid *coretypes.RequestID) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeProcessedRequestId, reqid[:])
 }
 
-func IsRequestCompleted(addr *coretypes.ChainID, reqid *coretypes.RequestID) (bool, error) {
-	return getSCPartition(addr).Has(dbkeyRequest(reqid))
+func IsRequestCompleted(addr *coretypes.ChainID, reqid *coretypes.RequestID, rProvider registry.RegistryProvider) (bool, error) {
+	return getSCPartition(rProvider, addr).Has(dbkeyRequest(reqid))
 }

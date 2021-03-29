@@ -12,6 +12,7 @@ import (
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/hashing"
+	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/util"
@@ -75,6 +76,7 @@ type stateManager struct {
 	eventPendingBlockMsgCh       chan chain.PendingBlockMsg
 	eventTimerMsgCh              chan chain.TimerTick
 	closeCh                      chan bool
+	rProvider                    registry.RegistryProvider
 }
 
 type syncedBatch struct {
@@ -93,7 +95,7 @@ type pendingBlock struct {
 	stateTransactionRequestDeadline time.Time
 }
 
-func New(c chain.Chain, log *logger.Logger) chain.StateManager {
+func New(c chain.Chain, log *logger.Logger, rp registry.RegistryProvider) chain.StateManager {
 	ret := &stateManager{
 		chain:                        c,
 		pingPong:                     make([]bool, c.Size()),
@@ -109,6 +111,7 @@ func New(c chain.Chain, log *logger.Logger) chain.StateManager {
 		eventPendingBlockMsgCh:       make(chan chain.PendingBlockMsg),
 		eventTimerMsgCh:              make(chan chain.TimerTick),
 		closeCh:                      make(chan bool),
+		rProvider:                    rp,
 	}
 	go ret.initLoadState()
 
@@ -125,7 +128,7 @@ func (sm *stateManager) initLoadState() {
 	var batch state.Block
 	var stateExists bool
 
-	sm.solidState, batch, stateExists, err = state.LoadSolidState(sm.chain.ID())
+	sm.solidState, batch, stateExists, err = state.LoadSolidState(sm.chain.ID(), sm.rProvider)
 	if err != nil {
 		sm.log.Errorf("initLoadState: %v", err)
 		sm.chain.Dismiss()

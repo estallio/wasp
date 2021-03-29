@@ -10,6 +10,7 @@ import (
 	"github.com/iotaledger/wasp/packages/kv"
 	"github.com/iotaledger/wasp/packages/kv/dict"
 	"github.com/iotaledger/wasp/packages/kv/subrealm"
+	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/packages/vm/core/root"
@@ -24,8 +25,8 @@ type viewcontext struct {
 	log        *logger.Logger
 }
 
-func NewFromDB(chainID coretypes.ChainID, proc *processors.ProcessorCache) (*viewcontext, error) {
-	state_, _, ok, err := state.LoadSolidState(&chainID)
+func NewFromDB(chainID coretypes.ChainID, proc *processors.ProcessorCache, rProvider registry.RegistryProvider) (*viewcontext, error) {
+	state_, _, ok, err := state.LoadSolidState(&chainID, rProvider)
 
 	if err != nil {
 		return nil, err

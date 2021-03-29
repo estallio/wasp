@@ -3,8 +3,6 @@ package database
 
 import (
 	"errors"
-	"github.com/iotaledger/hive.go/kvstore"
-	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/dbprovider"
 	"github.com/iotaledger/wasp/packages/parameters"
 	"sync"
@@ -30,6 +28,7 @@ func Init() *node.Plugin {
 
 func configure(_ *node.Plugin) {
 	log = logger.NewLogger(pluginName)
+	doOnce.Do(createInstance)
 
 	err := checkDatabaseVersion()
 	if errors.Is(err, ErrDBVersionIncompatible) {
@@ -58,11 +57,12 @@ func run(_ *node.Plugin) {
 	}
 }
 
-func GetInstance() *dbprovider.DBProvider {
+func GetDefaultDBProvider() *dbprovider.DBProvider {
 	doOnce.Do(createInstance)
 	return dbProvider
 }
 
+// TODO: move to configure function, avoid doOnce
 func createInstance() {
 	if parameters.GetBool(parameters.DatabaseInMemory) {
 		log.Infof("IN MEMORY DATABASE")
@@ -71,14 +71,4 @@ func createInstance() {
 		dbDir := parameters.GetString(parameters.DatabaseDir)
 		dbProvider = dbprovider.NewPersistentDBProvider(dbDir, log)
 	}
-}
-
-// each key in DB is prefixed with `chainID` | `SC index` | `object type byte`
-// GetPartition returns a Partition, which is a KVStore prefixed with the chain ID.
-func GetPartition(chainID *coretypes.ChainID) kvstore.KVStore {
-	return GetInstance().GetPartition(chainID)
-}
-
-func GetRegistryPartition() kvstore.KVStore {
-	return GetInstance().GetRegistryPartition()
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
+	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/tcrypto"
@@ -71,6 +72,7 @@ type operator struct {
 	eventTransactionInclusionLevelMsgCh chan *chain.TransactionInclusionLevelMsg
 	eventTimerMsgCh                     chan chain.TimerTick
 	closeCh                             chan bool
+	rProvider                           registry.RegistryProvider
 }
 
 type leaderStatus struct {
@@ -107,7 +109,7 @@ type request struct {
 	log *logger.Logger
 }
 
-func NewOperator(committee chain.Chain, dkshare *tcrypto.DKShare, log *logger.Logger) *operator {
+func NewOperator(committee chain.Chain, dkshare *tcrypto.DKShare, log *logger.Logger, rp registry.RegistryProvider) *operator {
 	defer committee.SetReadyConsensus()
 
 	ret := &operator{
@@ -128,6 +130,7 @@ func NewOperator(committee chain.Chain, dkshare *tcrypto.DKShare, log *logger.Lo
 		eventTransactionInclusionLevelMsgCh: make(chan *chain.TransactionInclusionLevelMsg),
 		eventTimerMsgCh:                     make(chan chain.TimerTick),
 		closeCh:                             make(chan bool),
+		rProvider:                           rp,
 	}
 	ret.setNextConsensusStage(consensusStageNoSync)
 	go ret.recvLoop()
