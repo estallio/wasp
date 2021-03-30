@@ -5,6 +5,7 @@ package statemgr
 
 import (
 	"github.com/iotaledger/wasp/packages/chain"
+	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/util"
 )
@@ -50,7 +51,7 @@ func (sm *stateManager) eventGetBlockMsg(msg *chain.GetBlockMsg) {
 
 	sm.log.Debugf("EventGetBlockMsg for state index #%d --> peer %d", msg.BlockIndex, msg.SenderIndex)
 
-	err = sm.chain.SendMsg(msg.SenderIndex, chain.MsgBatchHeader, util.MustBytes(&chain.BlockHeaderMsg{
+	err = sm.peers.SendMsg(msg.SenderIndex, chain.MsgBatchHeader, util.MustBytes(&chain.BlockHeaderMsg{
 		PeerMsgHeader: chain.PeerMsgHeader{
 			BlockIndex: msg.BlockIndex,
 		},
@@ -61,7 +62,7 @@ func (sm *stateManager) eventGetBlockMsg(msg *chain.GetBlockMsg) {
 		return
 	}
 	block.ForEach(func(batchIndex uint16, stateUpdate state.StateUpdate) bool {
-		err = sm.chain.SendMsg(msg.SenderIndex, chain.MsgStateUpdate, util.MustBytes(&chain.StateUpdateMsg{
+		err = sm.peers.SendMsg(msg.SenderIndex, chain.MsgStateUpdate, util.MustBytes(&chain.StateUpdateMsg{
 			PeerMsgHeader: chain.PeerMsgHeader{
 				BlockIndex: msg.BlockIndex,
 			},
@@ -138,7 +139,7 @@ func (sm *stateManager) eventStateUpdateMsg(msg *chain.StateUpdateMsg) {
 		}
 	}
 	// the whole block received
-	batch, err := state.NewBlock(sm.syncedBatch.stateUpdates)
+	batch, err := state.NewBlock(sm.syncedBatch.stateUpdates...)
 	if err != nil {
 		sm.log.Errorf("failed to create block: %v", err)
 		sm.syncedBatch = nil
@@ -157,53 +158,44 @@ func (sm *stateManager) eventStateUpdateMsg(msg *chain.StateUpdateMsg) {
 
 // EventStateTransactionMsg triggered whenever new state transaction arrives
 // the state transaction may be confirmed or not
-func (sm *stateManager) EventStateTransactionMsg(msg *chain.StateTransactionMsg) {
-	sm.eventStateTransactionMsgCh <- msg
+func (sm *stateManager) EventStateOutputMsg(msg *chain.StateMsg) {
+	sm.eventStateOutputMsgCh <- msg
 }
-func (sm *stateManager) eventStateTransactionMsg(msg *chain.StateTransactionMsg) {
-	stateBlock, ok := msg.Transaction.State()
-	if !ok {
-		// should not happen: must have state block
-		return
+func (sm *stateManager) eventStateOutputMsg(msg *chain.StateMsg) {
+	stateHash, err := hashing.HashValueFromBytes(msg.ChainOutput.GetStateData())
+	if err != nil {
+		sm.log.Panicf("failed to parse state hash: %v", err)
 	}
-
-	vh := stateBlock.StateHash()
-	sm.log.Debugw("EventStateTransactionMsg",
-		"txid", msg.ID().String(),
-		"state index", stateBlock.BlockIndex(),
-		"state hash", vh.String(),
+	sm.log.Debugw("EventStateOutputMsg",
+		"chainOutput", msg.ChainOutput.ID().Base58(),
+		"state index", msg.ChainOutput.GetStateIndex(),
+		"state hash", stateHash.String(),
 	)
 
-	//prop, err := msg.Transaction.Properties()
-	//if err != nil{
-	//	sm.log.Errorf("EventStateTransactionMsg: %v", err)
-	//	return
-	//}
-	//sm.log.Debugf("EventStateTransactionMsg:\n%s", prop.String())
-
-	sm.evidenceStateIndex(stateBlock.BlockIndex())
+	sm.evidenceStateIndex(msg.ChainOutput.GetStateIndex())
 
 	if sm.solidStateValid {
-		if stateBlock.BlockIndex() != sm.solidState.BlockIndex()+1 {
+		if msg.ChainOutput.GetStateIndex() != sm.solidState.BlockIndex()+1 {
 			sm.log.Debugf("skip state transaction: expected with state index #%d, got #%d, Txid: %s",
-				sm.solidState.BlockIndex()+1, stateBlock.BlockIndex(), msg.ID().String())
+				sm.solidState.BlockIndex()+1, msg.ChainOutput.GetStateIndex(), msg.ChainOutput.ID().Base58())
 			return
 		}
 	} else {
 		if sm.solidState == nil {
 			// pre-origin
-			if stateBlock.BlockIndex() != 0 {
+			if msg.ChainOutput.GetStateIndex() != 0 {
 				sm.log.Debugf("sm.solidState == nil && stateBlock.BlockIndex() != 0")
 				return
 			}
 		} else {
-			if stateBlock.BlockIndex() != sm.solidState.BlockIndex() {
+			if msg.ChainOutput.GetStateIndex() != sm.solidState.BlockIndex() {
 				sm.log.Debugf("sm.solidState == nil && stateBlock.BlockIndex() != sm.solidState.BlockIndex()")
 				return
 			}
 		}
 	}
-	sm.nextStateTransaction = msg.Transaction
+	sm.nextStateOutput = msg.ChainOutput
+	sm.nextStateOutputTimestamp = msg.Timestamp
 
 	sm.takeAction()
 }

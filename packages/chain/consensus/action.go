@@ -4,14 +4,13 @@
 package consensus
 
 import (
+	"github.com/iotaledger/wasp/packages/parameters"
+	"github.com/iotaledger/wasp/packages/sctransaction"
 	"time"
 
 	"github.com/iotaledger/wasp/packages/chain"
-	"github.com/iotaledger/wasp/packages/sctransaction"
-	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/util"
 	"github.com/iotaledger/wasp/packages/vm"
-	"github.com/iotaledger/wasp/plugins/nodeconn"
 )
 
 // takeAction analyzes the state and updates it and takes action such as sending of message,
@@ -36,7 +35,11 @@ func (op *operator) solidifyRequestArgsIfNeeded() {
 		return r.hasMessage() && !r.hasSolidArgs()
 	})
 	for _, req := range reqs {
-		ok, err := req.reqTx.Requests()[req.reqId.Index()].SolidifyArgs(op.chain.BlobCache())
+		reqOnLedger, ok := req.req.(*sctransaction.RequestOnLedger)
+		if !ok {
+			continue
+		}
+		ok, err := reqOnLedger.SolidifyArgs(op.committee.Chain().BlobCache())
 		if err != nil {
 			req.log.Errorf("failed to solidify request arguments: %v", err)
 		} else {
@@ -54,14 +57,11 @@ func (op *operator) solidifyRequestArgsIfNeeded() {
 // If the update about the tx state didn't come as expected (timeout), send the query about it
 // to the goshimmer (pull)
 func (op *operator) pullInclusionLevel() {
-	if op.postedResultTxid == nil {
+	if op.postedResultTxid == nilTxID {
 		return
 	}
 	if time.Now().After(op.nextPullInclusionLevel) {
-		addr := op.chain.Address()
-		if err := nodeconn.RequestInclusionLevelFromNode(op.postedResultTxid, &addr); err != nil {
-			op.log.Errorf("RequestInclusionLevelFromNode: %v", err)
-		}
+		op.nodeConn.RequestTxInclusionState(op.committee.Chain().ID().AsAddress(), op.postedResultTxid)
 		op.setNextPullInclusionStageDeadline()
 	}
 }
@@ -71,7 +71,7 @@ func (op *operator) rotateLeader() {
 	if !op.consensusStageDeadlineExpired() {
 		return
 	}
-	if !op.chain.HasQuorum() {
+	if !op.committee.QuorumIsAlive() {
 		op.log.Debugf("leader was not rotated due to no quorum")
 		return
 	}
@@ -81,7 +81,7 @@ func (op *operator) rotateLeader() {
 	// starting from scratch with the new leader
 	op.leaderStatus = nil
 	op.sentResultToLeader = nil
-	op.postedResultTxid = nil
+	op.postedResultTxid = nilTxID
 
 	op.log.Infof("LEADER ROTATED #%d --> #%d, I am the leader = %v",
 		prevlead, leader, op.iAmCurrentLeader())
@@ -101,7 +101,7 @@ func (op *operator) startCalculationsAsLeader() {
 		// only for leader in the beginning of the starting stage
 		return
 	}
-	if !op.chain.HasQuorum() {
+	if !op.committee.QuorumIsAlive() {
 		// no quorum, doesn't make sense to start
 		return
 	}
@@ -120,26 +120,24 @@ func (op *operator) startCalculationsAsLeader() {
 	// send to subordinated peers requests to process the batch
 	msgData := util.MustBytes(&chain.StartProcessingBatchMsg{
 		PeerMsgHeader: chain.PeerMsgHeader{
-			// timestamp is set by SendMsgToCommitteePeers
-			BlockIndex: op.stateTx.MustState().BlockIndex(),
+			// timestamp is set by SendMsgToPeers
+			BlockIndex: op.stateOutput.GetStateIndex(),
 		},
 		FeeDestination: rewardAddress,
-		Balances:       op.balances,
-		RequestIds:     reqIds,
+		RequestIDs:     reqIds,
 	})
 
 	// determine timestamp. Must be max(local clock, prev timestamp+1).
 	// Adjustment enforced, when needed
-	ts := time.Now().UnixNano()
-	prevTs := op.stateTx.MustState().Timestamp()
-	if ts <= prevTs {
-		op.log.Warnf("local clock is not ahead the timestamp of the previous state. prevTs: %d, currentTs: %d, diff: %d ns",
-			prevTs, ts, prevTs-ts)
-		ts = prevTs + 1
-		op.log.Info("timestamp was adjusted to %d", ts)
+	ts := time.Now()
+	prevTs := op.stateTimestamp
+	if !ts.After(prevTs) {
+		op.log.Warn("local clock is not ahead of the timestamp of the previous state")
+		ts = prevTs.Add(1 * time.Nanosecond)
+		op.log.Info("timestamp was adjusted to %v", ts)
 	}
 
-	numSucc := op.chain.SendMsgToCommitteePeers(chain.MsgStartProcessingRequest, msgData, ts)
+	numSucc := op.committee.SendMsgToPeers(chain.MsgStartProcessingRequest, msgData, ts.UnixNano())
 
 	op.log.Debugf("%d 'msgStartProcessingRequest' messages sent to peers", numSucc)
 
@@ -154,9 +152,8 @@ func (op *operator) startCalculationsAsLeader() {
 	op.leaderStatus = &leaderStatus{
 		reqs:          reqs,
 		batchHash:     batchHash,
-		balances:      op.balances,
 		timestamp:     ts,
-		signedResults: make([]*signedResult, op.chain.Size()),
+		signedResults: make([]*signedResult, op.committee.Size()),
 	}
 	op.log.Debugw("runCalculationsAsync leader",
 		"batch hash", batchHash.String(),
@@ -166,8 +163,7 @@ func (op *operator) startCalculationsAsLeader() {
 	// process the batch on own (leader) side. Start calculations on VM in a separate thread
 	op.runCalculationsAsync(runCalculationsParams{
 		requests:        reqs,
-		leaderPeerIndex: op.chain.OwnPeerIndex(),
-		balances:        op.balances,
+		leaderPeerIndex: op.committee.OwnPeerIndex(),
 		timestamp:       ts,
 		accrueFeesTo:    rewardAddress,
 	})
@@ -186,13 +182,13 @@ func (op *operator) checkQuorum() {
 		// checking quorum only if leader calculations has been finished
 		return
 	}
-	if op.leaderStatus == nil || op.leaderStatus.resultTx == nil || op.leaderStatus.finalized {
+	if op.leaderStatus == nil || op.leaderStatus.resultTxEssence == nil || op.leaderStatus.finalized {
 		return
 	}
 
 	// collect signature shares available
-	mainHash := op.leaderStatus.signedResults[op.chain.OwnPeerIndex()].essenceHash
-	sigShares := make([][]byte, 0, op.chain.Size())
+	mainHash := op.leaderStatus.signedResults[op.committee.OwnPeerIndex()].essenceHash
+	sigShares := make([][]byte, 0, op.committee.Size())
 	contributingPeers := make([]uint16, 0, op.size())
 	for i := range op.leaderStatus.signedResults {
 		if op.leaderStatus.signedResults[i] == nil {
@@ -204,7 +200,7 @@ func (op *operator) checkQuorum() {
 			op.leaderStatus.signedResults[i] = nil // ignoring
 			continue
 		}
-		err := op.dkshare.VerifySigShare(op.leaderStatus.resultTx.EssenceBytes(), op.leaderStatus.signedResults[i].sigShare)
+		err := op.committee.DKShare().VerifySigShare(op.leaderStatus.resultTxEssence.Bytes(), op.leaderStatus.signedResults[i].sigShare)
 		if err != nil {
 			// TODO here we are ignoring wrong signatures. In general, it means it is an attack
 			// In the future when each message will be signed by the peer's identity, the invalidity
@@ -226,63 +222,51 @@ func (op *operator) checkQuorum() {
 	// quorum detected
 
 	// finalizing result transaction with signatures
-	if err := op.aggregateSigShares(sigShares); err != nil {
+	finalTx, err := op.aggregateSigShares(sigShares)
+	if err != nil {
 		// should not normally happen
 		op.log.Errorf("aggregateSigShares returned: %v", err)
 		return
 	}
 
-	// just in case we are double-checking semantic validity of the transaction
-	// Invalidity of properties means internal error
-	// Nota that tx ID is not known and cannot be taken before this point,
-	_, err := op.leaderStatus.resultTx.Properties()
-	if err != nil {
-		op.log.Panicf("internal error: invalid tx properties: %v\ndump tx: %s\ndump vtx: %s\n", err,
-			op.leaderStatus.resultTx.String(), op.leaderStatus.resultTx.Transaction.String())
-		return
-	}
-
-	txid := op.leaderStatus.resultTx.ID()
-	sh := op.leaderStatus.resultTx.MustState().StateHash()
-	stateIndex := op.leaderStatus.resultTx.MustState().BlockIndex()
-	op.log.Infof("FINALIZED RESULT. txid: %s, state index: #%d, state hash: %s, contributors: %+v",
-		txid.String(), stateIndex, sh.String(), contributingPeers)
+	op.log.Infof("FINALIZED RESULT. txid: %s, contributors: %+v", finalTx.ID().Base58(), contributingPeers)
 	op.leaderStatus.finalized = true
 
 	// posting finalized transaction to goshimmer
-	addr := op.chain.Address()
-	err = nodeconn.PostTransactionToNode(op.leaderStatus.resultTx.Transaction, &addr, op.chain.OwnPeerIndex())
-	if err != nil {
-		op.log.Warnf("PostTransactionToNode failed: %v", err)
+	if len(finalTx.Bytes()) > parameters.MaxSerializedTransactionToGoshimmer {
+		op.log.Warnf("transaction too large")
 		return
 	}
-	op.log.Debugf("result transaction has been posted to node. txid: %s", txid.String())
+	// TODO get rid on dependency from plugin
+	op.nodeConn.PostTransaction(finalTx, op.committee.Chain().ID().AsAddress(), op.committee.OwnPeerIndex())
+	op.log.Debugf("result transaction has been posted to node. txid: %s", finalTx.ID().Base58())
 
 	// notify peers about finalization of the transaction
 	msgData := util.MustBytes(&chain.NotifyFinalResultPostedMsg{
 		PeerMsgHeader: chain.PeerMsgHeader{
-			// timestamp is set by SendMsgToCommitteePeers
-			BlockIndex: op.stateTx.MustState().BlockIndex(),
+			// timestamp is set by SendMsgToPeers
+			BlockIndex: op.stateOutput.GetStateIndex(),
 		},
-		TxId: txid,
+		TxId: finalTx.ID(),
 	})
 
-	numSent := op.chain.SendMsgToCommitteePeers(chain.MsgNotifyFinalResultPosted, msgData, time.Now().UnixNano())
+	numSent := op.committee.SendMsgToPeers(chain.MsgNotifyFinalResultPosted, msgData, time.Now().UnixNano())
 	op.log.Debugf("%d peers has been notified about finalized result", numSent)
 
 	op.setNextConsensusStage(consensusStageLeaderResultFinalized)
-	op.setFinalizedTransaction(&txid)
+	op.setFinalizedTransaction(finalTx.ID())
 
 	return
 }
 
 // sets new currentState transaction and initializes respective variables
-func (op *operator) setNewSCState(stateTx *sctransaction.Transaction, variableState state.VirtualState, synchronized bool) {
-	op.stateTx = stateTx
-	op.currentState = variableState
+func (op *operator) setNewSCState(msg *chain.StateTransitionMsg) {
+	op.stateOutput = msg.ChainOutput
+	op.stateTimestamp = msg.Timestamp
+	op.currentState = msg.VariableState
 	op.sentResultToLeader = nil
-	op.postedResultTxid = nil
+	op.postedResultTxid = nilTxID
 	op.requestBalancesDeadline = time.Now()
-	op.resetLeader(stateTx.ID().Bytes())
+	op.resetLeader(op.stateOutput.ID().Bytes())
 	op.adjustNotifications()
 }

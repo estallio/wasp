@@ -5,32 +5,31 @@ package solo
 
 import (
 	"fmt"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/utxoutil"
+	"github.com/iotaledger/hive.go/crypto/ed25519"
 	"github.com/iotaledger/wasp/packages/coretypes/requestargs"
 	"github.com/iotaledger/wasp/packages/kv"
-	"github.com/iotaledger/wasp/packages/vm"
+	"github.com/iotaledger/wasp/packages/sctransaction"
+	"golang.org/x/xerrors"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address/signaturescheme"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/coretypes/cbalances"
 	"github.com/iotaledger/wasp/packages/kv/codec"
 	"github.com/iotaledger/wasp/packages/kv/dict"
-	"github.com/iotaledger/wasp/packages/sctransaction"
-	"github.com/iotaledger/wasp/packages/sctransaction/txbuilder"
 	"github.com/iotaledger/wasp/packages/vm/viewcontext"
 	"github.com/stretchr/testify/require"
 )
 
 type CallParams struct {
-	targetName string
-	target     coretypes.Hname
-	epName     string
-	entryPoint coretypes.Hname
-	transfer   coretypes.ColoredBalances
-	mint       map[address.Address]int64
-	args       requestargs.RequestArgs
+	targetName  string
+	target      coretypes.Hname
+	epName      string
+	entryPoint  coretypes.Hname
+	transfer    *ledgerstate.ColoredBalances
+	mintAmount  uint64
+	mintAddress ledgerstate.Address
+	args        requestargs.RequestArgs
 }
 
 func NewCallParamsFromDic(scName, funName string, par dict.Dict) *CallParams {
@@ -77,25 +76,25 @@ func NewCallParamsOptimized(scName, funName string, optSize int, params ...inter
 
 // WithTransfer is a shorthand for the most often used case where only
 // a single color is transferred by WithTransfers
-func (r *CallParams) WithTransfer(color balance.Color, amount int64) *CallParams {
-	return r.WithTransfers(map[balance.Color]int64{color: amount})
+func (r *CallParams) WithTransfer(color ledgerstate.Color, amount uint64) *CallParams {
+	return r.WithTransfers(map[ledgerstate.Color]uint64{color: amount})
 }
 
 // WithTransfers complement CallParams structure with the colored balances of tokens
 // in the form of a collection of pairs 'color': 'balance'
-func (r *CallParams) WithTransfers(transfer map[balance.Color]int64) *CallParams {
-	r.transfer = cbalances.NewFromMap(transfer)
+func (r *CallParams) WithTransfers(transfer map[ledgerstate.Color]uint64) *CallParams {
+	r.transfer = ledgerstate.NewColoredBalances(transfer)
 	return r
 }
 
-// WithMinting adds minting part to the request transaction
-// in the map <address>: <amount> all addresses should be different from the
-// address of the target chain and amounts must be positive
-func (r *CallParams) WithMinting(mint map[address.Address]int64) *CallParams {
-	r.mint = make(map[address.Address]int64)
-	for addr, amount := range mint {
-		r.mint[addr] = amount
-	}
+func (r *CallParams) WithIotas(amount uint64) *CallParams {
+	return r.WithTransfer(ledgerstate.ColorIOTA, amount)
+}
+
+// WithMint adds additional mint proof
+func (r *CallParams) WithMint(targetAddress ledgerstate.Address, amount uint64) *CallParams {
+	r.mintAddress = targetAddress
+	r.mintAmount = amount
 	return r
 }
 
@@ -121,42 +120,52 @@ func toMap(params ...interface{}) map[string]interface{} {
 // RequestFromParamsToLedger creates transaction with one request based on parameters and sigScheme
 // Then it adds it to the ledger, atomically.
 // Locking on the mutex is needed to prevent mess when several goroutines work on he same address
-func (ch *Chain) RequestFromParamsToLedger(req *CallParams, sigScheme signaturescheme.SignatureScheme) *sctransaction.Transaction {
+func (ch *Chain) RequestFromParamsToLedger(req *CallParams, keyPair *ed25519.KeyPair) (*ledgerstate.Transaction, error) {
+	if req.transfer == nil || req.transfer.Size() == 0 {
+		return nil, xerrors.New("transfer can't be empty")
+	}
+
 	ch.Env.ledgerMutex.Lock()
 	defer ch.Env.ledgerMutex.Unlock()
 
-	if sigScheme == nil {
-		sigScheme = ch.OriginatorSigScheme
+	if keyPair == nil {
+		keyPair = ch.OriginatorKeyPair
 	}
-	allOuts := ch.Env.utxoDB.GetAddressOutputs(sigScheme.Address())
-	txb, err := txbuilder.NewFromOutputBalances(allOuts)
-	require.NoError(ch.Env.T, err)
+	addr := ledgerstate.NewED25519Address(keyPair.PublicKey)
+	allOuts := ch.Env.utxoDB.GetAddressOutputs(addr)
 
-	reqSect := sctransaction.NewRequestSectionByWallet(coretypes.NewContractID(ch.ChainID, req.target), req.entryPoint).
-		WithTransfer(req.transfer).
+	metadata := sctransaction.NewRequestMetadata().
+		WithTarget(req.target).
+		WithEntryPoint(req.entryPoint).
 		WithArgs(req.args)
 
-	err = txb.AddRequestSection(reqSect)
+	data := metadata.Bytes()
+	mdataBack := sctransaction.RequestMetadataFromBytes(data)
+	require.True(ch.Env.T, mdataBack.ParsedOk())
+
+	txb := utxoutil.NewBuilder(allOuts...)
+	var err error
+	err = txb.AddExtendedOutputConsume(ch.ChainID.AsAddress(), data, req.transfer.Map())
+	require.NoError(ch.Env.T, err)
+	if req.mintAmount > 0 {
+		err = txb.AddMintingOutputConsume(req.mintAddress, req.mintAmount)
+		require.NoError(ch.Env.T, err)
+	}
+
+	err = txb.AddReminderOutputIfNeeded(addr, nil, true)
 	require.NoError(ch.Env.T, err)
 
-	txb.AddMinting(req.mint)
-
-	tx, err := txb.Build(false)
-	require.NoError(ch.Env.T, err)
-
-	tx.Sign(sigScheme)
-
-	_, err = tx.Properties()
+	tx, err := txb.BuildWithED25519(keyPair)
 	require.NoError(ch.Env.T, err)
 
 	err = ch.Env.AddToLedger(tx)
 	require.NoError(ch.Env.T, err)
-	return tx
+	return tx, nil
 }
 
 // PostRequestSync posts a request synchronously  sent by the test program to the smart contract on the same or another chain:
 //  - creates a request transaction with the request block on it. The sigScheme is used to
-//    sign the inputs of the transaction or OriginatorSigScheme is used if parameter is nil
+//    sign the inputs of the transaction or OriginatorKeyPair is used if parameter is nil
 //  - adds request transaction to UTXODB
 //  - runs the request in the VM. It results in new updated virtual state and a new transaction
 //    which anchors the state.
@@ -169,25 +178,26 @@ func (ch *Chain) RequestFromParamsToLedger(req *CallParams, sigScheme signatures
 // Unlike the real Wasp environment, the 'solo' environment makes PostRequestSync a synchronous call.
 // It makes it possible step-by-step debug of the smart contract logic.
 // The call should be used only from the main thread (goroutine)
-func (ch *Chain) PostRequestSync(req *CallParams, sigScheme signaturescheme.SignatureScheme) (dict.Dict, error) {
-	_, ret, err := ch.PostRequestSyncTx(req, sigScheme)
+func (ch *Chain) PostRequestSync(req *CallParams, keyPair *ed25519.KeyPair) (dict.Dict, error) {
+	_, ret, err := ch.PostRequestSyncTx(req, keyPair)
 	return ret, err
 }
 
-func (ch *Chain) PostRequestSyncTx(req *CallParams, sigScheme signaturescheme.SignatureScheme) (*sctransaction.Transaction, dict.Dict, error) {
-	tx := ch.RequestFromParamsToLedger(req, sigScheme)
-
-	reqID := coretypes.NewRequestID(tx.ID(), 0)
-	ch.Log.Infof("PostRequestSync: %s::%s -- %s", req.targetName, req.epName, reqID.String())
-
-	r := vm.RequestRefWithFreeTokens{}
-	r.Tx = tx
-	ch.reqCounter.Add(1)
-	ret, err := ch.runBatch([]vm.RequestRefWithFreeTokens{r}, "post")
+func (ch *Chain) PostRequestSyncTx(req *CallParams, keyPair *ed25519.KeyPair) (*ledgerstate.Transaction, dict.Dict, error) {
+	tx, err := ch.RequestFromParamsToLedger(req, keyPair)
 	if err != nil {
 		return nil, nil, err
 	}
-	return tx, ret, nil
+	initReq, err := ch.Env.RequestsForChain(tx, ch.ChainID)
+	require.NoError(ch.Env.T, err)
+
+	ch.reqCounter.Add(1)
+	res, err := ch.runBatch(initReq, "post")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return tx, res, nil
 }
 
 // callViewFull calls the view entry point of the smart contract
@@ -197,7 +207,7 @@ func (ch *Chain) callViewFull(req *CallParams) (dict.Dict, error) {
 	defer ch.runVMMutex.Unlock()
 
 	vctx := viewcontext.New(ch.ChainID, ch.State.Variables(), ch.State.Timestamp(), ch.proc, ch.Log)
-	a, ok, err := req.args.SolidifyRequestArguments(ch.Env.registry)
+	a, ok, err := req.args.SolidifyRequestArguments(ch.Env.blobCache)
 	if err != nil || !ok {
 		return nil, fmt.Errorf("solo.internal error: can't solidify args")
 	}

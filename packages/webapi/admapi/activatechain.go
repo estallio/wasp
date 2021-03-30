@@ -2,9 +2,9 @@ package admapi
 
 import (
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"net/http"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
@@ -25,19 +25,22 @@ func addChainEndpoints(adm echoswagger.ApiGroup) {
 }
 
 func handleActivateChain(c echo.Context) error {
-	scAddress, err := address.FromBase58(c.Param("chainID"))
+	scAddress, err := ledgerstate.AddressFromBase58EncodedString(c.Param("chainID"))
 	if err != nil {
 		return httperrors.BadRequest(fmt.Sprintf("Invalid SC address: %s", c.Param("address")))
 	}
-	chainID := (coretypes.ChainID)(scAddress)
+	chainID, err := coretypes.ChainIDFromAddress(scAddress)
+	if err != nil {
+		return err
+	}
 	registry := registry.DefaultRegistry()
-	bd, err := registry.ActivateChainRecord(&chainID)
+	bd, err := registry.ActivateChainRecord(chainID)
 	if err != nil {
 		return err
 	}
 
-	log.Debugw("calling committees.ActivateChain", "chainID", bd.ChainID.String())
-	if err := chains.ActivateChain(bd, registry); err != nil {
+	log.Debugw("calling committees.Activate", "chainID", bd.ChainID.String())
+	if err := chains.AllChains().Activate(bd, registry); err != nil {
 		return err
 	}
 
@@ -45,18 +48,20 @@ func handleActivateChain(c echo.Context) error {
 }
 
 func handleDeactivateChain(c echo.Context) error {
-	scAddress, err := address.FromBase58(c.Param("chainID"))
+	scAddress, err := ledgerstate.AddressFromBase58EncodedString(c.Param("chainID"))
 	if err != nil {
 		return httperrors.BadRequest(fmt.Sprintf("Invalid chain id: %s", c.Param("chainID")))
 	}
-
-	chainID := (coretypes.ChainID)(scAddress)
-	bd, err := registry.DefaultRegistry().DeactivateChainRecord(&chainID)
+	chainID, err := coretypes.ChainIDFromAddress(scAddress)
+	if err != nil {
+		return err
+	}
+	bd, err := registry.DefaultRegistry().DeactivateChainRecord(chainID)
 	if err != nil {
 		return err
 	}
 
-	err = chains.DeactivateChain(bd)
+	err = chains.AllChains().Deactivate(bd)
 	if err != nil {
 		return err
 	}

@@ -75,7 +75,9 @@ func TestDeployRubbish(t *testing.T) {
 	env := solo.New(t, false, false)
 	chain := env.NewChain(nil, "chain1")
 	name := "testCore"
-	err := chain.DeployWasmContract(nil, name, "blob_deploy_test.go")
+	_, err := chain.FindContract(name)
+	require.Error(t, err)
+	err = chain.DeployWasmContract(nil, name, "blob_deploy_test.go")
 	require.Error(t, err)
 
 	_, err = chain.FindContract(name)
@@ -96,7 +98,7 @@ func TestListBlobs(t *testing.T) {
 func TestDeployNotAuthorized(t *testing.T) {
 	env := solo.New(t, false, false)
 	chain := env.NewChain(nil, "chain1")
-	user1 := env.NewSignatureSchemeWithFunds()
+	user1, _ := env.NewKeyPairWithFunds()
 	err := chain.DeployWasmContract(user1, "testCore", wasmFile)
 	require.Error(t, err)
 }
@@ -104,68 +106,68 @@ func TestDeployNotAuthorized(t *testing.T) {
 func TestDeployGrant(t *testing.T) {
 	env := solo.New(t, false, false)
 	chain := env.NewChain(nil, "chain1")
-	user1 := env.NewSignatureSchemeWithFunds()
-	user1AgentID := coretypes.NewAgentIDFromAddress(user1.Address())
+	user1, addr1 := env.NewKeyPairWithFunds()
+	user1AgentID := coretypes.NewAgentID(addr1, 0)
 
 	req := solo.NewCallParams(root.Interface.Name, root.FuncGrantDeploy,
 		root.ParamDeployer, user1AgentID,
-	)
+	).WithIotas(1)
 	_, err := chain.PostRequestSync(req, nil)
 	require.NoError(t, err)
 
 	err = chain.DeployWasmContract(user1, "testCore", wasmFile)
 	require.NoError(t, err)
 
-	_, contracts := chain.GetInfo()
-	require.EqualValues(t, 5, len(contracts))
+	_, _, contacts := chain.GetInfo()
+	require.EqualValues(t, 6, len(contacts))
 
 	err = chain.DeployWasmContract(user1, "testInccounter2", wasmFile)
 	require.NoError(t, err)
 
-	_, contracts = chain.GetInfo()
-	require.EqualValues(t, 6, len(contracts))
+	_, _, contacts = chain.GetInfo()
+	require.EqualValues(t, 7, len(contacts))
 }
 
 func TestRevokeDeploy(t *testing.T) {
 	env := solo.New(t, false, false)
 	chain := env.NewChain(nil, "chain1")
-	user1 := env.NewSignatureSchemeWithFunds()
-	user1AgentID := coretypes.NewAgentIDFromAddress(user1.Address())
+	user1, addr1 := env.NewKeyPairWithFunds()
+	user1AgentID := coretypes.NewAgentID(addr1, 0)
 
 	req := solo.NewCallParams(root.Interface.Name, root.FuncGrantDeploy,
 		root.ParamDeployer, user1AgentID,
-	)
+	).WithIotas(1)
 	_, err := chain.PostRequestSync(req, nil)
 	require.NoError(t, err)
 
 	err = chain.DeployWasmContract(user1, "testCore", wasmFile)
 	require.NoError(t, err)
 
-	_, contracts := chain.GetInfo()
-	require.EqualValues(t, 5, len(contracts))
+	_, _, contacts := chain.GetInfo()
+	require.EqualValues(t, 6, len(contacts))
 
 	req = solo.NewCallParams(root.Interface.Name, root.FuncRevokeDeploy,
 		root.ParamDeployer, user1AgentID,
-	)
+	).WithIotas(1)
 	_, err = chain.PostRequestSync(req, nil)
 	require.NoError(t, err)
 
 	err = chain.DeployWasmContract(user1, "testInccounter2", wasmFile)
 	require.Error(t, err)
 
-	_, contracts = chain.GetInfo()
-	require.EqualValues(t, 5, len(contracts))
+	_, _, contacts = chain.GetInfo()
+	require.EqualValues(t, 6, len(contacts))
 }
 
 func TestDeployGrantFail(t *testing.T) {
 	env := solo.New(t, false, false)
 	chain := env.NewChain(nil, "chain1")
-	user1 := env.NewSignatureSchemeWithFunds()
-	user1AgentID := coretypes.NewAgentIDFromAddress(user1.Address())
+	user1, addr1 := env.NewKeyPairWithFunds()
+	user1AgentID := coretypes.NewAgentID(addr1, 0)
 
 	req := solo.NewCallParams(root.Interface.Name, root.FuncGrantDeploy,
 		root.ParamDeployer, user1AgentID,
-	)
+	).WithIotas(1)
 	_, err := chain.PostRequestSync(req, user1)
 	require.Error(t, err)
 

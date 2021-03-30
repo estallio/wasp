@@ -20,9 +20,9 @@ func (op *operator) sendRequestNotificationsToLeader() {
 	if op.consensusStage != consensusStageSubStarting {
 		return
 	}
-	if !op.chain.HasQuorum() {
+	if !op.committee.QuorumIsAlive() {
 		op.log.Debugf("sendRequestNotificationsToLeader: postponed due to no quorum. Peer status: %s",
-			op.chain.PeerStatus())
+			op.committee.PeerStatus())
 		return
 	}
 	currentLeaderPeerIndex, _ := op.currentLeader()
@@ -51,7 +51,7 @@ func (op *operator) sendRequestNotificationsToLeader() {
 		"state index", op.mustStateIndex(),
 		"reqs", idsShortStr(reqIds),
 	)
-	if err := op.chain.SendMsg(currentLeaderPeerIndex, chain.MsgNotifyRequests, msgData); err != nil {
+	if err := op.committee.SendMsg(currentLeaderPeerIndex, chain.MsgNotifyRequests, msgData); err != nil {
 		op.log.Errorf("sending notifications to %d: %v", currentLeaderPeerIndex, err)
 	}
 	op.setNextConsensusStage(consensusStageSubNotificationsSent)
@@ -96,7 +96,7 @@ func (op *operator) adjustNotifications() {
 	// clear all the notification markers
 	for _, req := range op.requests {
 		setAllFalse(req.notifications)
-		req.notifications[op.peerIndex()] = req.reqTx != nil
+		req.notifications[op.peerIndex()] = req.req != nil
 	}
 	// put markers of the current state
 	op.markRequestsNotified(op.notificationsBacklog)

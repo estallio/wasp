@@ -4,15 +4,14 @@
 package chain
 
 import (
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/peering"
-	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/tcrypto/tbdn"
 	"github.com/iotaledger/wasp/packages/vm"
+	"time"
 )
 
 // Message types for the committee communications.
@@ -25,7 +24,6 @@ const (
 	MsgGetBatch                = 5 + peering.FirstUserMsgCode
 	MsgStateUpdate             = 6 + peering.FirstUserMsgCode
 	MsgBatchHeader             = 7 + peering.FirstUserMsgCode
-	MsgTestTrace               = 8 + peering.FirstUserMsgCode
 )
 
 type TimerTick int
@@ -59,7 +57,7 @@ type NotifyReqMsg struct {
 // Final signature is sent to prevent possibility for a leader node to lie (is it necessary)
 type NotifyFinalResultPostedMsg struct {
 	PeerMsgHeader
-	TxId valuetransaction.ID
+	TxId ledgerstate.TransactionID
 }
 
 // message is sent by the leader to other peers to initiate request processing
@@ -70,11 +68,9 @@ type StartProcessingBatchMsg struct {
 	// timestamp of the message. Field is set upon receive the message to sender's timestamp
 	Timestamp int64
 	// batch of request ids
-	RequestIds []coretypes.RequestID
+	RequestIDs []coretypes.RequestID
 	// reward address
 	FeeDestination coretypes.AgentID
-	// balances/outputs
-	Balances map[valuetransaction.ID][]*balance.Balance
 }
 
 // after calculations the result peer responds to the start processing msg
@@ -103,7 +99,7 @@ type GetBlockMsg struct {
 type BlockHeaderMsg struct {
 	PeerMsgHeader
 	Size                uint16
-	AnchorTransactionID valuetransaction.ID
+	AnchorTransactionID ledgerstate.TransactionID
 }
 
 // state update sent to peer. Used in sync process, as part of batch
@@ -115,15 +111,6 @@ type StateUpdateMsg struct {
 	IndexInTheBlock uint16
 }
 
-// used for testing of the communications
-type TestTraceMsg struct {
-	PeerMsgHeader
-	InitTime      int64
-	InitPeerIndex uint16
-	Sequence      []uint16
-	NumHops       uint16
-}
-
 // state manager notifies consensus operator about changed state
 // only sent internally within committee
 // state transition is always from state N to state N+1
@@ -131,7 +118,9 @@ type StateTransitionMsg struct {
 	// new variable state
 	VariableState state.VirtualState
 	// corresponding state transaction
-	AnchorTransaction *sctransaction.Transaction
+	ChainOutput *ledgerstate.AliasOutput
+	//
+	Timestamp time.Time
 	// processed requests
 	RequestIDs []*coretypes.RequestID
 	// is the state index last seen
@@ -144,15 +133,18 @@ type PendingBlockMsg struct {
 	Block state.Block
 }
 
-// message is sent to the consensus manager after it receives state transaction
-// which is valid but not confirmed yet.
-type StateTransactionEvidenced struct {
-	TxId      valuetransaction.ID
-	StateHash hashing.HashValue
-}
-
 // VMResultMsg is the message sent by the async VM task to the chan object upon success full finish
 type VMResultMsg struct {
 	Task   *vm.VMTask
 	Leader uint16
+}
+
+type InclusionStateMsg struct {
+	TxID  ledgerstate.TransactionID
+	State ledgerstate.InclusionState
+}
+
+type StateMsg struct {
+	ChainOutput *ledgerstate.AliasOutput
+	Timestamp   time.Time
 }

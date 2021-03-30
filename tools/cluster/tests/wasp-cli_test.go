@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/iotaledger/wasp/packages/hashing"
-	_ "github.com/iotaledger/wasp/packages/sctransaction/properties"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/tools/cluster"
 	"github.com/iotaledger/wasp/tools/cluster/testutil"

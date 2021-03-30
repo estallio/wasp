@@ -3,11 +3,10 @@ package viewcontext
 import (
 	"fmt"
 	"github.com/iotaledger/hive.go/logger"
-	"github.com/iotaledger/wasp/packages/kv/buffered"
-
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv"
+	"github.com/iotaledger/wasp/packages/kv/buffered"
 	"github.com/iotaledger/wasp/packages/kv/dict"
 	"github.com/iotaledger/wasp/packages/kv/subrealm"
 	"github.com/iotaledger/wasp/packages/registry"
@@ -96,7 +95,7 @@ func (v *viewcontext) mustCallView(contractHname coretypes.Hname, epCode coretyp
 	if !ep.IsView() {
 		return nil, fmt.Errorf("only view entry point can be called in this context")
 	}
-	return ep.CallView(newSandboxView(v, contractHname, params))
+	return ep.Call(newSandboxView(v, contractHname, params))
 }
 
 func contractStateSubpartition(state kv.KVStore, contractHname coretypes.Hname) kv.KVStore {

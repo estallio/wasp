@@ -2,9 +2,9 @@ package dashboard
 
 import (
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"net/http"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
@@ -33,53 +33,53 @@ func initChain(e *echo.Echo, r renderer) {
 }
 
 func handleChain(c echo.Context) error {
-	chainid, err := coretypes.NewChainIDFromBase58(c.Param("chainid"))
+	chainid, err := coretypes.ChainIDFromBase58(c.Param("chainid"))
 	if err != nil {
 		return err
 	}
 
-	tab := chainBreadcrumb(c.Echo(), chainid)
+	tab := chainBreadcrumb(c.Echo(), *chainid)
 
 	result := &ChainTemplateParams{
 		BaseTemplateParams: BaseParams(c, tab),
-		ChainID:            chainid,
+		ChainID:            *chainid,
 	}
 
 	registry := registry_plgn.DefaultRegistry()
-	result.ChainRecord, err = registry.GetChainRecord(&chainid)
+	result.ChainRecord, err = registry.ChainRecordFromRegistry(chainid)
 	if err != nil {
 		return err
 	}
 
 	if result.ChainRecord != nil && result.ChainRecord.Active {
-		result.VirtualState, result.Block, _, err = state.LoadSolidState(&chainid, registry)
+		result.VirtualState, result.Block, _, err = state.LoadSolidState(chainid, registry)
 		if err != nil {
 			return err
 		}
 
-		chain := chains.GetChain(chainid)
+		theChain := chains.AllChains().Get(chainid)
 
-		result.Committee.Size = chain.Size()
-		result.Committee.Quorum = chain.Quorum()
-		result.Committee.NumPeers = chain.NumPeers()
-		result.Committee.HasQuorum = chain.HasQuorum()
-		result.Committee.PeerStatus = chain.PeerStatus()
-		result.RootInfo, err = fetchRootInfo(chain)
+		result.Committee.Size = theChain.Committee().Size()
+		result.Committee.Quorum = theChain.Committee().Quorum()
+		//result.Committee.NumPeers = theChain.Committee().NumPeers()
+		result.Committee.HasQuorum = theChain.Committee().QuorumIsAlive()
+		result.Committee.PeerStatus = theChain.Committee().PeerStatus()
+		result.RootInfo, err = fetchRootInfo(theChain)
 		if err != nil {
 			return err
 		}
 
-		result.Accounts, err = fetchAccounts(chain)
+		result.Accounts, err = fetchAccounts(theChain)
 		if err != nil {
 			return err
 		}
 
-		result.TotalAssets, err = fetchTotalAssets(chain)
+		result.TotalAssets, err = fetchTotalAssets(theChain)
 		if err != nil {
 			return err
 		}
 
-		result.Blobs, err = fetchBlobs(chain)
+		result.Blobs, err = fetchBlobs(theChain)
 		if err != nil {
 			return err
 		}
@@ -105,7 +105,7 @@ func fetchAccounts(chain chain.Chain) ([]coretypes.AgentID, error) {
 	return ret, nil
 }
 
-func fetchTotalAssets(chain chain.Chain) (map[balance.Color]int64, error) {
+func fetchTotalAssets(chain chain.Chain) (map[ledgerstate.Color]uint64, error) {
 	bal, err := callView(chain, accounts.Interface.Hname(), accounts.FuncTotalAssets, nil)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ type ChainTemplateParams struct {
 	VirtualState state.VirtualState
 	RootInfo     RootInfo
 	Accounts     []coretypes.AgentID
-	TotalAssets  map[balance.Color]int64
+	TotalAssets  map[ledgerstate.Color]uint64
 	Blobs        map[hashing.HashValue]uint32
 	Committee    struct {
 		Size       uint16
@@ -148,7 +148,7 @@ const tplChain = `
 {{define "body"}}
 	{{ $chainid := .ChainID }}
 
-	{{if .ChainRecord}}
+	{{if .Record}}
 		{{ $rootinfo := .RootInfo }}
 		{{ $desc := trim 50 $rootinfo.Description }}
 
@@ -156,11 +156,11 @@ const tplChain = `
 			<h2 class="section">{{if $desc}}{{$desc}}{{else}}Chain <tt>{{$chainid}}</tt>{{end}}</h2>
 
 			<dl>
-				<dt>ChainID</dt><dd><tt>{{.ChainRecord.ChainID}}</tt></dd>
+				<dt>ChainID</dt><dd><tt>{{.Record.ChainID}}</tt></dd>
 				<dt>Chain address</dt><dd>{{template "address" .RootInfo.ChainAddress}}</dd>
 				<dt>Chain color</dt><dd><tt>{{.RootInfo.ChainColor}}</tt></dd>
-				<dt>Active</dt><dd><tt>{{.ChainRecord.Active}}</tt></dd>
-				{{if .ChainRecord.Active}}
+				<dt>Active</dt><dd><tt>{{.Record.Active}}</tt></dd>
+				{{if .Record.Active}}
 					<dt>Owner ID</dt><dd>{{template "agentid" (args .ChainID $rootinfo.OwnerID)}}</dd>
 					<dt>Delegated Owner ID</dt><dd>
 						{{- if $rootinfo.OwnerIDDelegated -}}
@@ -173,7 +173,7 @@ const tplChain = `
 			</dl>
 		</div>
 
-		{{if .ChainRecord.Active}}
+		{{if .Record.Active}}
 			<div class="card fluid">
 				<h3 class="section">Contracts</h3>
 				<dl>
@@ -239,7 +239,7 @@ const tplChain = `
 				<dt>Size</dt>      <dd><tt>{{.Committee.Size}}</tt></dd>
 				<dt>Quorum</dt>    <dd><tt>{{.Committee.Quorum}}</tt></dd>
 				<dt>NumPeers</dt>  <dd><tt>{{.Committee.NumPeers}}</tt></dd>
-				<dt>HasQuorum</dt> <dd><tt>{{.Committee.HasQuorum}}</tt></dd>
+				<dt>QuorumIsAlive</dt> <dd><tt>{{.Committee.QuorumIsAlive}}</tt></dd>
 				</dl>
 				<h4>Peer status</h4>
 				<table>

@@ -7,7 +7,6 @@ import (
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv/codec"
 	"github.com/iotaledger/wasp/packages/kv/dict"
-	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/tools/wasp-cli/config"
 	"github.com/iotaledger/wasp/tools/wasp-cli/log"
@@ -22,7 +21,7 @@ func storeBlobCmd(args []string) {
 }
 
 func uploadBlob(fieldValues dict.Dict, forceWait bool) (hash hashing.HashValue) {
-	util.WithSCTransaction(func() (tx *sctransaction.Transaction, err error) {
+	util.WithSCTransaction(func() (tx *sctransaction_old.TransactionEssence, err error) {
 		hash, tx, err = Client().UploadBlob(fieldValues, config.CommitteeApi(chainCommittee()), uploadQuorum)
 		if err == nil {
 			log.Printf("uploaded blob to chain -- hash: %s", hash)
@@ -37,17 +36,19 @@ func showBlobCmd(args []string) {
 		log.Fatal("Usage: %s chain show-blob <hash>", os.Args[0])
 	}
 	hash := util.ValueFromString("base58", args[0])
-	fields, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncGetBlobInfo, codec.MakeDict(map[string]interface{}{
-		blob.ParamHash: hash,
-	}))
+	fields, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncGetBlobInfo,
+		dict.Dict{
+			blob.ParamHash: hash,
+		})
 	log.Check(err)
 
 	values := dict.New()
 	for field := range fields {
-		value, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncGetBlobField, codec.MakeDict(map[string]interface{}{
-			blob.ParamHash:  hash,
-			blob.ParamField: []byte(field),
-		}))
+		value, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncGetBlobField,
+			dict.Dict{
+				blob.ParamHash:  hash,
+				blob.ParamField: []byte(field),
+			})
 		log.Check(err)
 		values.Set(field, value[blob.ParamBytes])
 	}
@@ -55,7 +56,7 @@ func showBlobCmd(args []string) {
 }
 
 func listBlobsCmd(args []string) {
-	ret, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncListBlobs, nil)
+	ret, err := SCClient(blob.Interface.Hname()).CallView(blob.FuncListBlobs)
 	log.Check(err)
 
 	blobs, err := blob.DecodeSizesMap(ret)

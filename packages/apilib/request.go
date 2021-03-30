@@ -5,22 +5,18 @@ package apilib
 
 import (
 	"fmt"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"github.com/iotaledger/wasp/packages/coretypes/requestargs"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address/signaturescheme"
 	"github.com/iotaledger/wasp/client/level1"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/sctransaction"
-	_ "github.com/iotaledger/wasp/packages/sctransaction/properties"
-	"github.com/iotaledger/wasp/packages/sctransaction/txbuilder"
 )
 
 type RequestSectionParams struct {
 	TargetContractID coretypes.ContractID
 	EntryPointCode   coretypes.Hname
 	TimeLock         uint32
-	Transfer         coretypes.ColoredBalances // should not not include request token. It is added automatically
+	Transfer         coretypes.ColoredBalancesOld // should not not include request token. It is added automatically
 	Args             requestargs.RequestArgs
 }
 
@@ -28,14 +24,14 @@ type CreateRequestTransactionParams struct {
 	Level1Client         level1.Level1Client
 	SenderSigScheme      signaturescheme.SignatureScheme
 	RequestSectionParams []RequestSectionParams
-	Mint                 map[address.Address]int64 // free tokens to be minted from IOTA color
+	Mint                 map[ledgerstate.Address]uint64 // free tokens to be minted from IOTA color
 	Post                 bool
 	WaitForConfirmation  bool
 }
 
-func CreateRequestTransaction(par CreateRequestTransactionParams) (*sctransaction.Transaction, error) {
+func CreateRequestTransaction(par CreateRequestTransactionParams) (*sctransaction_old.TransactionEssence, error) {
 	senderAddr := par.SenderSigScheme.Address()
-	allOuts, err := par.Level1Client.GetConfirmedAccountOutputs(&senderAddr)
+	allOuts, err := par.Level1Client.GetConfirmedOutputs(senderAddr)
 	if err != nil {
 		return nil, fmt.Errorf("can't get outputs from the node: %v", err)
 	}
@@ -46,7 +42,7 @@ func CreateRequestTransaction(par CreateRequestTransactionParams) (*sctransactio
 	}
 
 	for _, sectPar := range par.RequestSectionParams {
-		reqSect := sctransaction.NewRequestSectionByWallet(sectPar.TargetContractID, sectPar.EntryPointCode).
+		reqSect := sctransaction_old.NewRequestSectionByWallet(sectPar.TargetContractID, sectPar.EntryPointCode).
 			WithTimelock(sectPar.TimeLock).
 			WithTransfer(sectPar.Transfer)
 

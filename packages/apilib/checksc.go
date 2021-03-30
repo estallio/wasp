@@ -5,11 +5,11 @@ package apilib
 
 import (
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"io"
 	"io/ioutil"
 	"os"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/wasp/client"
 	"github.com/iotaledger/wasp/client/multiclient"
 	"github.com/iotaledger/wasp/packages/coretypes"
@@ -106,8 +106,8 @@ func CheckDeployment(apiHosts []string, chainID coretypes.ChainID, textout ...io
 
 	fmt.Fprintf(out, prefix+"checking distributed keys..\n")
 
-	chainAddr := address.Address(chainID)
-	dkShares, err := multiclient.New(apiHosts).DKSharesGet(&chainAddr)
+	chainAddr := chainID.AsAddress()
+	dkShares, err := multiclient.New(apiHosts).DKSharesGet(chainAddr)
 	if err != nil {
 		fmt.Fprintf(out, prefix+"%s\n", err.Error())
 		return false

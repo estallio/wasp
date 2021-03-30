@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/model"
@@ -15,16 +14,15 @@ import (
 )
 
 func addChainRecordEndpoints(adm echoswagger.ApiGroup) {
+	rnd1 := coretypes.RandomChainID()
 	example := model.ChainRecord{
-		ChainID:        model.NewChainID(&coretypes.ChainID{1, 2, 3, 4}),
-		Color:          model.NewColor(&balance.Color{5, 6, 7, 8}),
-		CommitteeNodes: []string{"wasp1:4000", "wasp2:4000"},
-		Active:         false,
+		ChainID: model.NewChainID(rnd1),
+		Active:  false,
 	}
 
 	adm.POST(routes.PutChainRecord(), handlePutChainRecord).
 		SetSummary("Create a new chain record").
-		AddParamBody(example, "ChainRecord", "Chain record", true)
+		AddParamBody(example, "Record", "Chain record", true)
 
 	adm.GET(routes.GetChainRecord(":chainID"), handleGetChainRecord).
 		SetSummary("Find the chain record for the given chain ID").
@@ -43,36 +41,36 @@ func handlePutChainRecord(c echo.Context) error {
 		return httperrors.BadRequest("Invalid request body")
 	}
 
-	bd := req.ChainRecord()
+	bd := req.Record()
 
 	registry := registry.DefaultRegistry()
-	bd2, err := registry.GetChainRecord(&bd.ChainID)
+	bd2, err := registry.ChainRecordFromRegistry(&bd.ChainID)
 	if err != nil {
 		return err
 	}
 	if bd2 != nil {
-		return httperrors.Conflict(fmt.Sprintf("ChainRecord already exists: %s", bd.ChainID.String()))
+		return httperrors.Conflict(fmt.Sprintf("Record already exists: %s", bd.ChainID.String()))
 	}
-	if err = registry.SaveChainRecord(bd); err != nil {
+	if err = bd.SaveToRegistry(); err != nil {
 		return err
 	}
 
-	log.Infof("ChainRecord saved for addr: %s color: %s", bd.ChainID.String(), bd.Color.String())
+	log.Infof("Record saved. ChainID: %s", bd.ChainID.String())
 
 	return c.NoContent(http.StatusCreated)
 }
 
 func handleGetChainRecord(c echo.Context) error {
-	chainID, err := coretypes.NewChainIDFromBase58(c.Param("chainID"))
+	chainID, err := coretypes.ChainIDFromBase58(c.Param("chainID"))
 	if err != nil {
 		return httperrors.BadRequest(err.Error())
 	}
-	bd, err := registry.DefaultRegistry().GetChainRecord(&chainID)
+	bd, err := registry.DefaultRegistry().ChainRecordFromRegistry(chainID)
 	if err != nil {
 		return err
 	}
 	if bd == nil {
-		return httperrors.NotFound(fmt.Sprintf("ChainRecord not found: %s", chainID))
+		return httperrors.NotFound(fmt.Sprintf("Record not found: %s", chainID))
 	}
 	return c.JSON(http.StatusOK, model.NewChainRecord(bd))
 }

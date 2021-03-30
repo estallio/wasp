@@ -4,8 +4,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
-	"github.com/iotaledger/wasp/packages/txutil/vtxbuilder"
 	"github.com/iotaledger/wasp/tools/wasp-cli/config"
 	"github.com/iotaledger/wasp/tools/wasp-cli/log"
 	"github.com/iotaledger/wasp/tools/wasp-cli/util"
@@ -22,7 +20,7 @@ func mintCmd(args []string) {
 	log.Check(err)
 
 	tx := util.WithTransaction(func() (*transaction.Transaction, error) {
-		return vtxbuilder.NewColoredTokensTransaction(config.GoshimmerClient(), wallet.SignatureScheme(), int64(amount))
+		return vtxbuilder.NewColoredTokensTransaction(config.GoshimmerClient(), wallet.SignatureScheme(), uint64(amount))
 	})
 
 	log.Printf("Minted %d tokens of color %s\n", amount, tx.ID())

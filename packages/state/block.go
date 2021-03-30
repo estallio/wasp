@@ -3,11 +3,10 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"github.com/iotaledger/wasp/packages/dbprovider"
 	"io"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
@@ -17,18 +16,18 @@ import (
 
 type block struct {
 	stateIndex   uint32
-	stateTxId    valuetransaction.ID
+	stateTxId    ledgerstate.TransactionID
 	stateUpdates []StateUpdate
 }
 
 // validates, enumerates and creates a block from array of state updates
-func NewBlock(stateUpdates []StateUpdate) (Block, error) {
+func NewBlock(stateUpdates ...StateUpdate) (Block, error) {
 	if len(stateUpdates) == 0 {
 		return nil, fmt.Errorf("block can't be empty")
 	}
 	for i, su := range stateUpdates {
 		for j := i + 1; j < len(stateUpdates); j++ {
-			if *su.RequestID() == *stateUpdates[j].RequestID() {
+			if su.RequestID() == stateUpdates[j].RequestID() {
 				return nil, fmt.Errorf("duplicate request id")
 			}
 		}
@@ -38,7 +37,7 @@ func NewBlock(stateUpdates []StateUpdate) (Block, error) {
 	}, nil
 }
 
-func NewBlockFromBytes(data []byte) (Block, error) {
+func BlockFromBytes(data []byte) (Block, error) {
 	ret := new(block)
 	if err := ret.Read(bytes.NewReader(data)); err != nil {
 		return nil, err
@@ -47,16 +46,23 @@ func NewBlockFromBytes(data []byte) (Block, error) {
 }
 
 // block with empty state update and nil state hash
-func MustNewOriginBlock(color *balance.Color) Block {
-	ret, err := NewBlock([]StateUpdate{NewStateUpdate(nil)})
+func MustNewOriginBlock(originTxID ledgerstate.TransactionID) Block {
+	ret, err := NewBlock(NewStateUpdate(coretypes.RequestID{}))
 	if err != nil {
 		log.Panic(err)
 	}
-	var col balance.Color
-	if color != nil {
-		col = *color
-	}
-	return ret.WithStateTransaction((valuetransaction.ID)(col))
+	return ret.WithStateTransaction(originTxID)
+}
+
+// OriginBlockHash block has does not depend on the transaction hash
+func OriginBlockHash() hashing.HashValue {
+	return MustNewOriginBlock(ledgerstate.TransactionID{}).EssenceHash()
+}
+
+func (b *block) Bytes() []byte {
+	var buf bytes.Buffer
+	_ = b.Write(&buf)
+	return buf.Bytes()
 }
 
 func (b *block) String() string {
@@ -72,7 +78,7 @@ func (b *block) String() string {
 	return ret
 }
 
-func (b *block) StateTransactionID() valuetransaction.ID {
+func (b *block) StateTransactionID() ledgerstate.TransactionID {
 	return b.stateTxId
 }
 
@@ -90,7 +96,7 @@ func (b *block) WithBlockIndex(stateIndex uint32) Block {
 	return b
 }
 
-func (b *block) WithStateTransaction(vtxid valuetransaction.ID) Block {
+func (b *block) WithStateTransaction(vtxid ledgerstate.TransactionID) Block {
 	b.stateTxId = vtxid
 	return b
 }
@@ -107,8 +113,8 @@ func (b *block) Size() uint16 {
 	return uint16(len(b.stateUpdates))
 }
 
-func (b *block) RequestIDs() []*coretypes.RequestID {
-	ret := make([]*coretypes.RequestID, b.Size())
+func (b *block) RequestIDs() []coretypes.RequestID {
+	ret := make([]coretypes.RequestID, b.Size())
 	for i, su := range b.stateUpdates {
 		ret[i] = su.RequestID()
 	}
@@ -190,5 +196,5 @@ func LoadBlock(chainID *coretypes.ChainID, stateIndex uint32, rProvider registry
 	if err != nil {
 		return nil, err
 	}
-	return NewBlockFromBytes(data)
+	return BlockFromBytes(data)
 }

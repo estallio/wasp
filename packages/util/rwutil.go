@@ -3,11 +3,10 @@ package util
 import (
 	"encoding"
 	"encoding/binary"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"io"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/pkg/errors"
 )
@@ -173,15 +172,15 @@ func ReadBytes16(r io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if length != 0 {
-		ret := make([]byte, length)
-		_, err = r.Read(ret)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
+	if length == 0 {
+		return []byte{}, nil
 	}
-	return nil, nil
+	ret := make([]byte, length)
+	_, err = r.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func WriteBytes32(w io.Writer, data []byte) error {
@@ -198,6 +197,9 @@ func ReadBytes32(r io.Reader) ([]byte, error) {
 	err := ReadUint32(r, &length)
 	if err != nil {
 		return nil, err
+	}
+	if length == 0 {
+		return []byte{}, nil
 	}
 	ret := make([]byte, length)
 	_, err = r.Read(ret)
@@ -285,23 +287,12 @@ func ReadStrings16(r io.Reader) ([]string, error) {
 	return ret, nil
 }
 
-func ReadTransactionId(r io.Reader, txid *transaction.ID) error {
-	n, err := r.Read(txid[:])
-	if err != nil {
-		return err
-	}
-	if n != transaction.IDLength {
-		return errors.New("error while reading txid")
-	}
-	return nil
-}
-
-func ReadColor(r io.Reader, color *balance.Color) error {
+func ReadColor(r io.Reader, color *ledgerstate.Color) error {
 	n, err := r.Read(color[:])
 	if err != nil {
 		return err
 	}
-	if n != balance.ColorLength {
+	if n != ledgerstate.ColorLength {
 		return errors.New("error while reading color code")
 	}
 	return nil

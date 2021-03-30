@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/iotaledger/goshimmer/client"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"os"
 )
 
@@ -38,7 +37,7 @@ func PrintTransactionById(node string, txidBase58 string) {
 		return
 	}
 
-	fmt.Printf("-- Transaction: %s\n", txidBase58)
+	fmt.Printf("-- TransactionEssence: %s\n", txidBase58)
 	fmt.Printf("-- Data payload: %d bytes\n", len(resp.Transaction.DataPayload))
 	fmt.Printf("-- Inputs:\n")
 	for _, inp := range resp.Transaction.Inputs {

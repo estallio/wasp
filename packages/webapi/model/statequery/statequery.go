@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv"
@@ -211,7 +210,7 @@ func (r *QueryResult) MustString() (string, bool) {
 	return s, ok
 }
 
-func (r *QueryResult) MustAddress() address.Address {
+func (r *QueryResult) MustAddress() ledgerstate.Address {
 	v, _, err := codec.DecodeAddress(r.MustBytes())
 	if err != nil {
 		panic(err)

@@ -23,13 +23,13 @@ func initDeployFlags(flags *pflag.FlagSet) {
 func deployCmd(args []string) {
 	alias := GetChainAlias()
 
-	chainid, _, _, err := apilib.DeployChain(apilib.CreateChainParams{
+	chainid, _, err := apilib.DeployChain(apilib.CreateChainParams{
 		Node:                  config.GoshimmerClient(),
 		CommitteeApiHosts:     config.CommitteeApi(committee),
 		CommitteePeeringHosts: config.CommitteePeering(committee),
 		N:                     uint16(len(committee)),
 		T:                     uint16(quorum),
-		OriginatorSigScheme:   wallet.Load().SignatureScheme(),
+		OriginatorKeyPair:     wallet.Load().SignatureScheme(),
 		Description:           description,
 		Textout:               os.Stdout,
 		Prefix:                "",

@@ -26,7 +26,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/kv/codec"
 	"github.com/iotaledger/wasp/packages/kv/collections"
@@ -34,7 +33,7 @@ import (
 	"github.com/iotaledger/wasp/packages/util"
 )
 
-// implement Processor and EntryPoint interfaces
+// implement VMProcessor and VMProcessorEntryPoint interfaces
 type fairRouletteProcessor map[coretypes.Hname]fairRouletteEntryPoint
 
 type fairRouletteEntryPoint func(ctx coretypes.Sandbox) error
@@ -110,11 +109,11 @@ type PlayerStats struct {
 }
 
 // coonnection of the SC program with the Wasp node
-func GetProcessor() coretypes.Processor {
+func GetProcessor() coretypes.VMProcessor {
 	return entryPoints
 }
 
-func (f fairRouletteProcessor) GetEntryPoint(code coretypes.Hname) (coretypes.EntryPoint, bool) {
+func (f fairRouletteProcessor) GetEntryPoint(code coretypes.Hname) (coretypes.VMProcessorEntryPoint, bool) {
 	ep, ok := entryPoints[code]
 	return ep, ok
 }
@@ -167,7 +166,7 @@ func placeBet(ctx coretypes.Sandbox) error {
 
 	// look if there're some iotas left for the bet after minimum rewards are already taken.
 	// Here we are accessing only the part of the UTXOs which the ones which are coming with the current request
-	sum := ctx.IncomingTransfer().Balance(balance.ColorIOTA)
+	sum := ctx.IncomingTransfer().Balance(ledgerstate.ColorIOTA)
 	if sum == 0 {
 		// nothing to bet
 		return fmt.Errorf("placeBet: sum == 0: nothing to bet")
@@ -356,7 +355,7 @@ func playAndDistribute(ctx coretypes.Sandbox) error {
 		// However, it is healthy to compress number of outputs in the address
 
 		//agent := coretypes.NewAgentIDFromContractID(ctx.ContractID())
-		//if !ctx.MoveTokens(agent, balance.ColorIOTA, totalLockedAmount) {
+		//if !ctx.MoveTokens(agent, ledgerstate.ColorIOTA, totalLockedAmount) {
 		//	// inconsistency. A disaster
 		//	ctx.Event(fmt.Sprintf("$$$$$$$$$$ something went wrong 1"))
 		//	ctx.Log().Panicf("MoveTokens failed")
@@ -397,7 +396,7 @@ func addToWinsPerColor(ctx coretypes.Sandbox, winningColor byte) {
 
 // distributeLockedAmount distributes total locked amount proportionally to placed sums
 func distributeLockedAmount(ctx coretypes.Sandbox, bets []*BetInfo, totalLockedAmount int64) bool {
-	sumsByPlayers := make(map[coretypes.AgentID]int64)
+	sumsByPlayers := make(map[coretypes.AgentID]uint64)
 	totalWinningAmount := int64(0)
 	for _, bet := range bets {
 		if _, ok := sumsByPlayers[bet.Player]; !ok {
@@ -441,11 +440,11 @@ func distributeLockedAmount(ctx coretypes.Sandbox, bets []*BetInfo, totalLockedA
 	// distribute iotas
 	for i := range finalWinners {
 
-		available := ctx.Balance(balance.ColorIOTA)
+		available := ctx.Balance(ledgerstate.ColorIOTA)
 		ctx.Event(fmt.Sprintf("sending reward iotas %d to the winner %s. Available iotas: %d",
 			sumsByPlayers[finalWinners[i]], finalWinners[i].String(), available))
 
-		//if !ctx.MoveTokens(finalWinners[i], balance.ColorIOTA, sumsByPlayers[finalWinners[i]]) {
+		//if !ctx.MoveTokens(finalWinners[i], ledgerstate.ColorIOTA, sumsByPlayers[finalWinners[i]]) {
 		//	return false
 		//}
 	}

@@ -5,7 +5,8 @@ package solo
 
 import (
 	"fmt"
-	"github.com/iotaledger/goshimmer/dapps/waspconn/packages/waspconn"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate/utxoutil"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv/dict"
@@ -16,40 +17,33 @@ import (
 	"github.com/stretchr/testify/require"
 	"strings"
 	"sync"
+	"time"
 )
 
-func (ch *Chain) validateBatch(batch []vm.RequestRefWithFreeTokens) {
-	for _, reqRef := range batch {
-		_, err := reqRef.Tx.Properties()
-		require.NoError(ch.Env.T, err)
-	}
-}
-
-func (ch *Chain) runBatch(batch []vm.RequestRefWithFreeTokens, trace string) (dict.Dict, error) {
+func (ch *Chain) runBatch(batch []*sctransaction.RequestOnLedger, trace string) (dict.Dict, error) {
 	ch.Log.Debugf("runBatch ('%s')", trace)
 
 	ch.runVMMutex.Lock()
 	defer ch.runVMMutex.Unlock()
 
-	ch.validateBatch(batch)
-
-	// solidify arguments
-	for _, reqRef := range batch {
-		if ok, err := reqRef.RequestSection().SolidifyArgs(ch.Env.registry); err != nil || !ok {
+	requests := make([]coretypes.Request, len(batch))
+	for i, req := range batch {
+		// solidify arguments
+		if ok, err := req.SolidifyArgs(ch.Env.blobCache); err != nil || !ok {
 			return nil, fmt.Errorf("solo inconsistency: failed to solidify request args")
 		}
+		requests[i] = req
 	}
 
+	timestamp := ch.Env.LogicalTime().Add(time.Duration(len(batch)) * time.Nanosecond)
 	task := &vm.VMTask{
 		Processors:         ch.proc,
-		ChainID:            ch.ChainID,
-		Color:              ch.ChainColor,
+		ChainInput:         ch.GetChainOutput(),
+		Requests:           requests,
+		Timestamp:          timestamp,
+		VirtualState:       ch.State.Clone(),
 		Entropy:            hashing.RandomHash(nil),
 		ValidatorFeeTarget: ch.ValidatorFeeTarget,
-		Balances:           waspconn.OutputsToBalances(ch.Env.utxoDB.GetAddressOutputs(ch.ChainAddress)),
-		Requests:           batch,
-		Timestamp:          ch.Env.LogicalTime().UnixNano(),
-		VirtualState:       ch.State.Clone(),
 		Log:                ch.Log,
 	}
 	var err error
@@ -65,21 +59,22 @@ func (ch *Chain) runBatch(batch []vm.RequestRefWithFreeTokens, trace string) (di
 	}
 
 	wg.Add(1)
-	err = runvm.RunComputationsAsync(task)
+	runvm.MustRunComputationsAsync(task)
 	require.NoError(ch.Env.T, err)
-
 	wg.Wait()
-	task.ResultTransaction.Sign(ch.ChainSigScheme)
 
-	// check semantic validity of the transaction
-	_, err = task.ResultTransaction.Properties()
+	inputs, err := ch.Env.utxoDB.CollectUnspentOutputsFromInputs(task.ResultTransaction)
+	require.NoError(ch.Env.T, err)
+	unlockBlocks, err := utxoutil.UnlockInputsWithED25519KeyPairs(inputs, task.ResultTransaction, ch.StateControllerKeyPair)
 	require.NoError(ch.Env.T, err)
 
-	ch.settleStateTransition(task.VirtualState, task.ResultBlock, task.ResultTransaction)
+	tx := ledgerstate.NewTransaction(task.ResultTransaction, unlockBlocks)
+	ch.settleStateTransition(task.VirtualState, task.ResultBlock, tx)
+
 	return callRes, callErr
 }
 
-func (ch *Chain) settleStateTransition(newState state.VirtualState, block state.Block, stateTx *sctransaction.Transaction) {
+func (ch *Chain) settleStateTransition(newState state.VirtualState, block state.Block, stateTx *ledgerstate.Transaction) {
 	err := ch.Env.AddToLedger(stateTx)
 	require.NoError(ch.Env.T, err)
 
@@ -89,20 +84,17 @@ func (ch *Chain) settleStateTransition(newState state.VirtualState, block state.
 	err = newState.CommitToDb(block)
 	require.NoError(ch.Env.T, err)
 
-	prevBlockIndex := ch.StateTx.MustState().BlockIndex()
-
-	ch.StateTx = stateTx
 	ch.State = newState
 
-	ch.Log.Infof("state transition #%d --> #%d. Requests in the block: %d. Posted: %d",
-		prevBlockIndex, ch.State.BlockIndex(), len(block.RequestIDs()), len(ch.StateTx.Requests()))
+	ch.Log.Infof("state transition #%d --> #%d. Requests in the block: %d. Outputs: %d",
+		ch.State.BlockIndex()-1, ch.State.BlockIndex(), len(block.RequestIDs()), len(stateTx.Essence().Outputs()))
 	ch.Log.Debugf("Batch processed: %s", batchShortStr(block.RequestIDs()))
 
-	ch.Env.EnqueueRequests(ch.StateTx)
+	ch.Env.EnqueueRequests(stateTx)
 	ch.Env.ClockStep()
 }
 
-func batchShortStr(reqIds []*coretypes.RequestID) string {
+func batchShortStr(reqIds []coretypes.RequestID) string {
 	ret := make([]string, len(reqIds))
 	for i, r := range reqIds {
 		ret[i] = r.Short()

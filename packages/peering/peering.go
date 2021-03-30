@@ -13,10 +13,10 @@ package peering
 import (
 	"bytes"
 	"errors"
+	"github.com/iotaledger/goshimmer/packages/txstream/chopper"
 	"hash/crc32"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/waspconn/packages/chopper"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/util"
 	"go.dedis.ch/kyber/v3"
@@ -162,7 +162,6 @@ func NewPeerMessageFromBytes(buf []byte) (*PeerMessage, error) {
 			return nil, err
 		}
 	default:
-		m.ChainID = coretypes.NilChainID
 		if err = m.ChainID.Read(r); err != nil {
 			return nil, err
 		}

@@ -4,10 +4,10 @@
 package consensus
 
 import (
-	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	"golang.org/x/xerrors"
+	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
@@ -20,9 +20,8 @@ import (
 type runCalculationsParams struct {
 	requests        []*request
 	leaderPeerIndex uint16
-	balances        map[valuetransaction.ID][]*balance.Balance
 	accrueFeesTo    coretypes.AgentID
-	timestamp       int64
+	timestamp       time.Time
 }
 
 // runs the VM for requests and posts result to committee's queue
@@ -31,14 +30,17 @@ func (op *operator) runCalculationsAsync(par runCalculationsParams) {
 		op.log.Debugf("runCalculationsAsync: variable currentState is not known")
 		return
 	}
+	h := op.stateOutput.ID()
+	reqs := make([]coretypes.Request, len(par.requests))
+	for i, req := range par.requests {
+		reqs[i] = req.req
+	}
 	ctx := &vm.VMTask{
-		Processors:         op.chain.Processors(),
-		ChainID:            *op.chain.ID(),
-		Color:              *op.chain.Color(),
-		Entropy:            (hashing.HashValue)(op.stateTx.ID()),
-		Balances:           par.balances,
+		Processors:         op.committee.Chain().Processors(),
+		ChainInput:         op.stateOutput,
+		Entropy:            hashing.HashData(h[:]),
 		ValidatorFeeTarget: par.accrueFeesTo,
-		Requests:           takeRefs(par.requests),
+		Requests:           reqs,
 		Timestamp:          par.timestamp,
 		VirtualState:       op.currentState,
 		Log:                op.log,
@@ -48,14 +50,12 @@ func (op *operator) runCalculationsAsync(par runCalculationsParams) {
 			op.log.Errorf("VM task failed: %v", vmError)
 			return
 		}
-		op.chain.ReceiveMessage(&chain.VMResultMsg{
+		op.committee.Chain().ReceiveMessage(&chain.VMResultMsg{
 			Task:   ctx,
 			Leader: par.leaderPeerIndex,
 		})
 	}
-	if err := runvm.RunComputationsAsync(ctx); err != nil {
-		op.log.Errorf("RunComputationsAsync: %v", err)
-	}
+	runvm.MustRunComputationsAsync(ctx)
 }
 
 func (op *operator) sendResultToTheLeader(result *vm.VMTask, leader uint16) {
@@ -66,7 +66,7 @@ func (op *operator) sendResultToTheLeader(result *vm.VMTask, leader uint16) {
 		return
 	}
 
-	sigShare, err := op.dkshare.SignShare(result.ResultTransaction.EssenceBytes())
+	sigShare, err := op.committee.DKShare().SignShare(result.ResultTransaction.Bytes())
 	if err != nil {
 		op.log.Errorf("error while signing transaction %v", err)
 		return
@@ -74,10 +74,10 @@ func (op *operator) sendResultToTheLeader(result *vm.VMTask, leader uint16) {
 
 	reqids := make([]coretypes.RequestID, len(result.Requests))
 	for i := range reqids {
-		reqids[i] = *result.Requests[i].RequestID()
+		reqids[i] = result.Requests[i].ID()
 	}
 
-	essenceHash := hashing.HashData(result.ResultTransaction.EssenceBytes())
+	essenceHash := hashing.HashData(result.ResultTransaction.Bytes())
 	batchHash := vm.BatchHash(reqids, result.Timestamp, leader)
 
 	op.log.Debugw("sendResultToTheLeader",
@@ -92,12 +92,12 @@ func (op *operator) sendResultToTheLeader(result *vm.VMTask, leader uint16) {
 			BlockIndex: op.mustStateIndex(),
 		},
 		BatchHash:     batchHash,
-		OrigTimestamp: result.Timestamp,
+		OrigTimestamp: result.Timestamp.UnixNano(),
 		EssenceHash:   essenceHash,
 		SigShare:      sigShare,
 	})
 
-	if err := op.chain.SendMsg(leader, chain.MsgSignedHash, msgData); err != nil {
+	if err := op.committee.SendMsg(leader, chain.MsgSignedHash, msgData); err != nil {
 		op.log.Error(err)
 		return
 	}
@@ -113,7 +113,7 @@ func (op *operator) saveOwnResult(result *vm.VMTask) {
 			stages[consensusStageLeaderCalculationsStarted].name, stages[op.consensusStage].name)
 		return
 	}
-	sigShare, err := op.dkshare.SignShare(result.ResultTransaction.EssenceBytes())
+	sigShare, err := op.committee.DKShare().SignShare(result.ResultTransaction.Bytes())
 	if err != nil {
 		op.log.Errorf("error while signing transaction %v", err)
 		return
@@ -121,10 +121,10 @@ func (op *operator) saveOwnResult(result *vm.VMTask) {
 
 	reqids := make([]coretypes.RequestID, len(result.Requests))
 	for i := range reqids {
-		reqids[i] = *result.Requests[i].RequestID()
+		reqids[i] = result.Requests[i].ID()
 	}
 
-	bh := vm.BatchHash(reqids, result.Timestamp, op.chain.OwnPeerIndex())
+	bh := vm.BatchHash(reqids, result.Timestamp, op.committee.OwnPeerIndex())
 	if bh != op.leaderStatus.batchHash {
 		panic("bh != op.leaderStatus.batchHash")
 	}
@@ -132,31 +132,48 @@ func (op *operator) saveOwnResult(result *vm.VMTask) {
 		panic("len(result.RequestIDs) != int(result.ResultBlock.Size())")
 	}
 
-	essenceHash := hashing.HashData(result.ResultTransaction.EssenceBytes())
+	essenceHash := hashing.HashData(result.ResultTransaction.Bytes())
 	op.log.Debugw("saveOwnResult",
 		"batchHash", bh.String(),
 		"ts", result.Timestamp,
 		"essenceHash", essenceHash.String(),
 	)
 
-	op.leaderStatus.resultTx = result.ResultTransaction
+	op.leaderStatus.resultTxEssence = result.ResultTransaction
 	op.leaderStatus.batch = result.ResultBlock
-	op.leaderStatus.signedResults[op.chain.OwnPeerIndex()] = &signedResult{
+	op.leaderStatus.signedResults[op.committee.OwnPeerIndex()] = &signedResult{
 		essenceHash: essenceHash,
 		sigShare:    sigShare,
 	}
 	op.setNextConsensusStage(consensusStageLeaderCalculationsFinished)
 }
 
-func (op *operator) aggregateSigShares(sigShares [][]byte) error {
-	resTx := op.leaderStatus.resultTx
+func (op *operator) aggregateSigShares(sigShares [][]byte) (*ledgerstate.Transaction, error) {
+	resTx := op.leaderStatus.resultTxEssence
 
-	finalSignature, err := op.dkshare.RecoverFullSignature(sigShares, resTx.EssenceBytes())
+	signatureWithPK, err := op.committee.DKShare().RecoverFullSignature(sigShares, resTx.Bytes())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := resTx.PutSignature(finalSignature); err != nil {
-		return fmt.Errorf("something wrong while aggregating final signature: %v", err)
+	sigUnlockBlock := ledgerstate.NewSignatureUnlockBlock(ledgerstate.NewBLSSignature(*signatureWithPK))
+	chainInput := ledgerstate.NewUTXOInput(op.stateOutput.ID())
+	var indexChainInput = -1
+	for i, inp := range resTx.Inputs() {
+		if inp.Compare(chainInput) == 0 {
+			indexChainInput = i
+			break
+		}
 	}
-	return nil
+	if indexChainInput < 0 {
+		return nil, xerrors.New("major inconsistency")
+	}
+	blocks := make([]ledgerstate.UnlockBlock, len(resTx.Inputs()))
+	for i := range op.leaderStatus.resultTxEssence.Inputs() {
+		if i == indexChainInput {
+			blocks[i] = sigUnlockBlock
+		} else {
+			blocks[i] = ledgerstate.NewAliasUnlockBlock(uint16(i))
+		}
+	}
+	return ledgerstate.NewTransaction(resTx, blocks), nil
 }

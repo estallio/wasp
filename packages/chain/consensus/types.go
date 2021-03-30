@@ -4,32 +4,28 @@
 package consensus
 
 import (
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	txstream "github.com/iotaledger/goshimmer/packages/txstream/client"
 	"sync"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/registry"
-	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/state"
-	"github.com/iotaledger/wasp/packages/tcrypto"
 	"github.com/iotaledger/wasp/packages/tcrypto/tbdn"
 	"github.com/iotaledger/wasp/packages/util"
-	"github.com/iotaledger/wasp/packages/vm/core/accounts"
 )
 
 type operator struct {
-	chain chain.Chain
-
-	dkshare *tcrypto.DKShare
+	committee chain.Committee
+	nodeConn  *txstream.Client
 	//currentState
-	currentState state.VirtualState
-	stateTx      *sctransaction.Transaction
-	balances     map[valuetransaction.ID][]*balance.Balance
+	currentState   state.VirtualState
+	stateOutput    *ledgerstate.AliasOutput
+	stateTimestamp time.Time
 
 	// consensus stage
 	consensusStage         int
@@ -47,9 +43,9 @@ type operator struct {
 
 	leaderStatus            *leaderStatus
 	sentResultToLeaderIndex uint16
-	sentResultToLeader      *sctransaction.Transaction
+	sentResultToLeader      *ledgerstate.TransactionEssence
 
-	postedResultTxid       *valuetransaction.ID
+	postedResultTxid       ledgerstate.TransactionID
 	nextPullInclusionLevel time.Time // if postedResultTxid != nil
 
 	nextArgSolidificationDeadline time.Time
@@ -62,28 +58,26 @@ type operator struct {
 
 	// Channels for accepting external events.
 	eventStateTransitionMsgCh           chan *chain.StateTransitionMsg
-	eventBalancesMsgCh                  chan chain.BalancesMsg
-	eventRequestMsgCh                   chan *chain.RequestMsg
+	eventRequestMsgCh                   chan coretypes.Request
 	eventNotifyReqMsgCh                 chan *chain.NotifyReqMsg
 	eventStartProcessingBatchMsgCh      chan *chain.StartProcessingBatchMsg
 	eventResultCalculatedCh             chan *chain.VMResultMsg
 	eventSignedHashMsgCh                chan *chain.SignedHashMsg
 	eventNotifyFinalResultPostedMsgCh   chan *chain.NotifyFinalResultPostedMsg
-	eventTransactionInclusionLevelMsgCh chan *chain.TransactionInclusionLevelMsg
+	eventTransactionInclusionLevelMsgCh chan *chain.InclusionStateMsg
 	eventTimerMsgCh                     chan chain.TimerTick
 	closeCh                             chan bool
 	rProvider                           registry.RegistryProvider
 }
 
 type leaderStatus struct {
-	reqs          []*request
-	batch         state.Block
-	batchHash     hashing.HashValue
-	timestamp     int64
-	balances      map[valuetransaction.ID][]*balance.Balance
-	resultTx      *sctransaction.Transaction
-	finalized     bool
-	signedResults []*signedResult
+	reqs            []*request
+	batch           state.Block
+	batchHash       hashing.HashValue
+	timestamp       time.Time
+	resultTxEssence *ledgerstate.TransactionEssence
+	finalized       bool
+	signedResults   []*signedResult
 }
 
 type signedResult struct {
@@ -91,17 +85,11 @@ type signedResult struct {
 	sigShare    tbdn.SigShare
 }
 
-// backlog entry. Keeps stateTx of the request
+// backlog entry. Keeps stateOutput of the request
 type request struct {
-	// id of the hash of request tx id and request block index
-	reqId coretypes.RequestID
-	// from request message. nil if request message wasn't received yet
-	reqTx *sctransaction.Transaction
-	// from request message. Not nil only if free tokens were attached to the request
-	freeTokens coretypes.ColoredBalances
-	// time when request message was received by the operator
+	req             coretypes.Request
 	whenMsgReceived time.Time
-	// notification vector for the current currentState
+	// notification vector for the current state
 	notifications []bool
 	// true if arguments were decoded/solidified already. If not, the request in not eligible for the batch
 	argsSolid bool
@@ -109,25 +97,22 @@ type request struct {
 	log *logger.Logger
 }
 
-func NewOperator(committee chain.Chain, dkshare *tcrypto.DKShare, log *logger.Logger, rp registry.RegistryProvider) *operator {
-	defer committee.SetReadyConsensus()
-
+func New(committee chain.Committee, nodeConn *txstream.Client, log *logger.Logger, rp registry.RegistryProvider) *operator {
 	ret := &operator{
-		chain:                               committee,
-		dkshare:                             dkshare,
+		committee:                           committee,
+		nodeConn:                            nodeConn,
 		requests:                            make(map[coretypes.RequestID]*request),
 		requestIdsProtected:                 make(map[coretypes.RequestID]bool),
 		peerPermutation:                     util.NewPermutation16(committee.Size(), nil),
 		log:                                 log.Named("c"),
 		eventStateTransitionMsgCh:           make(chan *chain.StateTransitionMsg),
-		eventBalancesMsgCh:                  make(chan chain.BalancesMsg),
-		eventRequestMsgCh:                   make(chan *chain.RequestMsg),
+		eventRequestMsgCh:                   make(chan coretypes.Request),
 		eventNotifyReqMsgCh:                 make(chan *chain.NotifyReqMsg),
 		eventStartProcessingBatchMsgCh:      make(chan *chain.StartProcessingBatchMsg),
 		eventResultCalculatedCh:             make(chan *chain.VMResultMsg),
 		eventSignedHashMsgCh:                make(chan *chain.SignedHashMsg),
 		eventNotifyFinalResultPostedMsgCh:   make(chan *chain.NotifyFinalResultPostedMsg),
-		eventTransactionInclusionLevelMsgCh: make(chan *chain.TransactionInclusionLevelMsg),
+		eventTransactionInclusionLevelMsgCh: make(chan *chain.InclusionStateMsg),
 		eventTimerMsgCh:                     make(chan chain.TimerTick),
 		closeCh:                             make(chan bool),
 		rProvider:                           rp,
@@ -147,10 +132,6 @@ func (op *operator) recvLoop() {
 		case msg, ok := <-op.eventStateTransitionMsgCh:
 			if ok {
 				op.eventStateTransitionMsg(msg)
-			}
-		case msg, ok := <-op.eventBalancesMsgCh:
-			if ok {
-				op.eventBalancesMsg(msg)
 			}
 		case msg, ok := <-op.eventRequestMsgCh:
 			if ok {
@@ -178,7 +159,7 @@ func (op *operator) recvLoop() {
 			}
 		case msg, ok := <-op.eventTransactionInclusionLevelMsgCh:
 			if ok {
-				op.eventTransactionInclusionLevelMsg(msg)
+				op.eventTransactionInclusionStateMsg(msg)
 			}
 		case msg, ok := <-op.eventTimerMsgCh:
 			if ok {
@@ -191,15 +172,15 @@ func (op *operator) recvLoop() {
 }
 
 func (op *operator) peerIndex() uint16 {
-	return *op.dkshare.Index
+	return op.committee.OwnPeerIndex()
 }
 
 func (op *operator) quorum() uint16 {
-	return op.dkshare.T
+	return op.committee.Quorum()
 }
 
 func (op *operator) size() uint16 {
-	return op.dkshare.N
+	return op.committee.Size()
 }
 
 func (op *operator) blockIndex() (uint32, bool) {
@@ -218,7 +199,5 @@ func (op *operator) mustStateIndex() uint32 {
 }
 
 func (op *operator) getFeeDestination() coretypes.AgentID {
-	// TODO
-	// temporary to the chain owner's account
-	return coretypes.NewAgentIDFromContractID(coretypes.NewContractID(*op.chain.ID(), accounts.Interface.Hname()))
+	return op.committee.FeeDestination()
 }

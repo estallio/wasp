@@ -6,20 +6,20 @@
 package statemgr
 
 import (
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"time"
 
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/registry"
-	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/util"
 )
 
 type stateManager struct {
 	chain chain.Chain
+	peers chain.Peers
 
 	// becomes true after initially loaded state is validated.
 	// after that it is always true
@@ -41,10 +41,12 @@ type stateManager struct {
 
 	// state transaction with +1 state index from the state index of solid variable state
 	// it may be nil if does not exist or not fetched yet
-	nextStateTransaction *sctransaction.Transaction
+	nextStateOutput          *ledgerstate.AliasOutput
+	nextStateOutputTimestamp time.Time
 
 	// state transaction which approves current state
-	approvingTransaction *sctransaction.Transaction
+	approvingStateOutput          *ledgerstate.AliasOutput
+	approvingStateOutputTimestamp time.Time
 
 	// was state transition message of the current state sent to the consensus operator
 	consensusNotifiedOnStateTransition bool
@@ -72,7 +74,7 @@ type stateManager struct {
 	eventGetBlockMsgCh           chan *chain.GetBlockMsg
 	eventBlockHeaderMsgCh        chan *chain.BlockHeaderMsg
 	eventStateUpdateMsgCh        chan *chain.StateUpdateMsg
-	eventStateTransactionMsgCh   chan *chain.StateTransactionMsg
+	eventStateOutputMsgCh        chan *chain.StateMsg
 	eventPendingBlockMsgCh       chan chain.PendingBlockMsg
 	eventTimerMsgCh              chan chain.TimerTick
 	closeCh                      chan bool
@@ -83,7 +85,7 @@ type syncedBatch struct {
 	msgCounter   uint16
 	stateIndex   uint32
 	stateUpdates []state.StateUpdate
-	stateTxId    valuetransaction.ID
+	stateTxId    ledgerstate.TransactionID
 }
 
 type pendingBlock struct {
@@ -95,27 +97,31 @@ type pendingBlock struct {
 	stateTransactionRequestDeadline time.Time
 }
 
-func New(c chain.Chain, log *logger.Logger, rp registry.RegistryProvider) chain.StateManager {
+func New(c chain.Chain, peers chain.Peers, log *logger.Logger, rp registry.RegistryProvider) chain.StateManager {
 	ret := &stateManager{
 		chain:                        c,
-		pingPong:                     make([]bool, c.Size()),
 		pendingBlocks:                make(map[hashing.HashValue]*pendingBlock),
-		permutation:                  util.NewPermutation16(c.NumPeers(), nil),
 		log:                          log.Named("s"),
 		evidenceStateIndexCh:         make(chan uint32),
 		eventStateIndexPingPongMsgCh: make(chan *chain.StateIndexPingPongMsg),
 		eventGetBlockMsgCh:           make(chan *chain.GetBlockMsg),
 		eventBlockHeaderMsgCh:        make(chan *chain.BlockHeaderMsg),
 		eventStateUpdateMsgCh:        make(chan *chain.StateUpdateMsg),
-		eventStateTransactionMsgCh:   make(chan *chain.StateTransactionMsg),
+		eventStateOutputMsgCh:        make(chan *chain.StateMsg),
 		eventPendingBlockMsgCh:       make(chan chain.PendingBlockMsg),
 		eventTimerMsgCh:              make(chan chain.TimerTick),
 		closeCh:                      make(chan bool),
 		rProvider:                    rp,
 	}
+	ret.SetPeers(peers)
 	go ret.initLoadState()
 
 	return ret
+}
+
+func (sm *stateManager) SetPeers(p chain.Peers) {
+	sm.peers = p
+	sm.pingPong = make([]bool, p.NumPeers())
 }
 
 func (sm *stateManager) Close() {
@@ -150,7 +156,7 @@ func (sm *stateManager) initLoadState() {
 	} else {
 		// pre-origin state. Origin block is empty block.
 		// Will be waiting for the origin transaction to arrive
-		sm.addPendingBlock(state.MustNewOriginBlock(sm.chain.Color()))
+		sm.addPendingBlock(state.MustNewOriginBlock(ledgerstate.TransactionID{}))
 
 		sm.log.Info("solid state does not exist: WAITING FOR THE ORIGIN TRANSACTION")
 	}
@@ -182,9 +188,9 @@ func (sm *stateManager) recvLoop() {
 			if ok {
 				sm.eventStateUpdateMsg(msg)
 			}
-		case msg, ok := <-sm.eventStateTransactionMsgCh:
+		case msg, ok := <-sm.eventStateOutputMsgCh:
 			if ok {
-				sm.eventStateTransactionMsg(msg)
+				sm.eventStateOutputMsg(msg)
 			}
 		case msg, ok := <-sm.eventPendingBlockMsgCh:
 			if ok {

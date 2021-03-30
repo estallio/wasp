@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address/signaturescheme"
 	"github.com/iotaledger/wasp/client"
 	"github.com/iotaledger/wasp/client/chainclient"
 	waspapi "github.com/iotaledger/wasp/packages/apilib"
@@ -114,7 +112,7 @@ func (c *Config) SetAddress(address string) {
 	config.SetSCAddress(c.Alias(), address)
 }
 
-func (c *Config) Address() *address.Address {
+func (c *Config) Address() ledgerstate.Address {
 	return config.GetSCAddress(c.Alias())
 }
 
@@ -146,14 +144,14 @@ type DeployParams struct {
 	SigScheme   signaturescheme.SignatureScheme
 }
 
-func Deploy(params *DeployParams) (*address.Address, error) {
+func Deploy(params *DeployParams) (ledgerstate.Address, error) {
 	scAddress, _, err := waspapi.DeployChain(waspapi.CreateChainParams{
 		Node:                  config.GoshimmerClient(),
 		CommitteeApiHosts:     config.CommitteeApi(params.Committee),
 		CommitteePeeringHosts: config.CommitteePeering(params.Committee),
 		N:                     uint16(len(params.Committee)),
 		T:                     uint16(params.Quorum),
-		OriginatorSigScheme:   params.SigScheme,
+		OriginatorKeyPair:     params.SigScheme,
 		ProgramHash:           params.progHash(),
 		Description:           params.Description,
 		Textout:               os.Stdout,
@@ -163,7 +161,7 @@ func Deploy(params *DeployParams) (*address.Address, error) {
 		return nil, err
 	}
 	err = waspapi.ActivateChain(waspapi.ActivateChainParams{
-		ChainID:           []*address.Address{scAddress},
+		ChainID:           []ledgerstate.Address{scAddress},
 		ApiHosts:          config.CommitteeApi(params.Committee),
 		PublisherHosts:    config.CommitteeNanomsg(params.Committee),
 		WaitForCompletion: config.WaitForCompletion,

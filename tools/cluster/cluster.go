@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"io"
 	"os"
 	"os/exec"
@@ -14,24 +15,14 @@ import (
 	"time"
 
 	"github.com/iotaledger/goshimmer/client/wallet/packages/seed"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/address"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/tangle"
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
-	nodeapi "github.com/iotaledger/goshimmer/dapps/waspconn/packages/apilib"
 	"github.com/iotaledger/hive.go/crypto/ed25519"
 	"github.com/iotaledger/wasp/client"
 	"github.com/iotaledger/wasp/client/level1"
 	"github.com/iotaledger/wasp/client/level1/goshimmer"
 	"github.com/iotaledger/wasp/client/multiclient"
 	waspapi "github.com/iotaledger/wasp/packages/apilib"
-	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/kv"
-	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/testutil"
-	"github.com/iotaledger/wasp/packages/txutil"
 	"github.com/iotaledger/wasp/packages/util"
-	"github.com/iotaledger/wasp/packages/webapi/model"
 	"github.com/iotaledger/wasp/tools/cluster/templates"
 )
 
@@ -92,7 +83,7 @@ func (clu *Cluster) DeployChain(description string, committeeNodes []int, quorum
 		CommitteePeeringHosts: chain.PeeringHosts(),
 		N:                     uint16(len(committeeNodes)),
 		T:                     quorum,
-		OriginatorSigScheme:   chain.OriginatorSigScheme(),
+		OriginatorKeyPair:     chain.OriginatorSigScheme(),
 		Description:           description,
 		Textout:               os.Stdout,
 		Prefix:                "[cluster] ",
@@ -236,7 +227,7 @@ func (cluster *Cluster) copySnapshotBin(srcFilename string, dstFilename string) 
 		snapshot := tangle.Snapshot{
 			transaction.GenesisID: {
 				genesisAddr: {
-					balance.New(balance.ColorIOTA, genesisBalance),
+					balance.New(ledgerstate.ColorIOTA, genesisBalance),
 				},
 			},
 		}
@@ -451,7 +442,7 @@ func (cluster *Cluster) StartMessageCounter(expectations map[string]int) (*Messa
 	return NewMessageCounter(cluster, cluster.Config.AllNodes(), expectations)
 }
 
-func (cluster *Cluster) PostTransaction(tx *sctransaction.Transaction) error {
+func (cluster *Cluster) PostTransaction(tx *sctransaction_old.TransactionEssence) error {
 	fmt.Printf("[cluster] posting request tx: %s\n", tx.ID().String())
 	err := cluster.Level1Client().PostAndWaitForConfirmation(tx.Transaction)
 	if err != nil {
@@ -462,10 +453,10 @@ func (cluster *Cluster) PostTransaction(tx *sctransaction.Transaction) error {
 	return nil
 }
 
-func (cluster *Cluster) VerifyAddressBalances(addr *address.Address, totalExpected int64, expect map[balance.Color]int64, comment ...string) bool {
-	allOuts, err := cluster.Level1Client().GetConfirmedAccountOutputs(addr)
+func (cluster *Cluster) VerifyAddressBalances(addr ledgerstate.Address, totalExpected uint64, expect map[ledgerstate.Color]uint64, comment ...string) bool {
+	allOuts, err := cluster.Level1Client().GetConfirmedOutputs(addr)
 	if err != nil {
-		fmt.Printf("[cluster] GetConfirmedAccountOutputs error: %v\n", err)
+		fmt.Printf("[cluster] GetConfirmedOutputs error: %v\n", err)
 		return false
 	}
 	byColor, total := txutil.OutputBalancesByColor(allOuts)
@@ -484,7 +475,7 @@ func (cluster *Cluster) VerifyAddressBalances(addr *address.Address, totalExpect
 	if len(comment) > 0 {
 		cmt = " (" + comment[0] + ")"
 	}
-	fmt.Printf("[cluster] Balances of the address %s%s\n      Total tokens: %d %s\n%s\n",
+	fmt.Printf("[cluster] Inputs of the address %s%s\n      Total tokens: %d %s\n%s\n",
 		addr.String(), cmt, total, totalExpectedStr, dumpStr)
 
 	if !assertionOk {
@@ -493,60 +484,9 @@ func (cluster *Cluster) VerifyAddressBalances(addr *address.Address, totalExpect
 	return assertionOk
 }
 
-func verifySCStateVariables2(host string, addr *address.Address, expectedValues map[kv.Key]interface{}) bool {
-	contractID := coretypes.NewContractID((coretypes.ChainID)(*addr), 0)
-	actual, err := client.NewWaspClient(host).DumpSCState(&contractID)
-	if model.IsHTTPNotFound(err) {
-		fmt.Printf("              state does not exist: FAIL\n")
-		return false
-	}
-	if err != nil {
-		panic(err)
-	}
-	pass := true
-	fmt.Printf("    host %s, state index #%d\n", host, actual.Index)
-	for k, vexp := range expectedValues {
-		vact, _ := actual.Variables.Get(k)
-		if vact == nil {
-			vact = []byte("N/A")
-		}
-		vres := "FAIL"
-		if bytes.Equal(interface2bytes(vexp), vact) {
-			vres = "OK"
-		} else {
-			pass = false
-		}
-		// TODO prettier output?
-		var actualValue interface{}
-		switch vexp.(type) {
-		case string:
-			actualValue = string(vact)
-		case []byte:
-			actualValue = vact
-		default:
-			if len(vact) == 8 {
-				actualValue = util.MustUint64From8Bytes(vact)
-			} else {
-				actualValue = vact
-			}
-		}
-		fmt.Printf("      '%s': %v (%v) -- %s\n", k, actualValue, vexp, vres)
-	}
-	return pass
-}
-
-func (cluster *Cluster) VerifySCStateVariables2(addr *address.Address, expectedValues map[kv.Key]interface{}) bool {
-	fmt.Printf("verifying state variables for address %s\n", addr.String())
-	pass := true
-	for _, host := range cluster.Config.ApiHosts(cluster.ActiveNodes()) {
-		pass = pass && verifySCStateVariables2(host, addr, expectedValues)
-	}
-	return pass
-}
-
-func dumpBalancesByColor(actual, expect map[balance.Color]int64) (string, bool) {
+func dumpBalancesByColor(actual, expect map[ledgerstate.Color]uint64) (string, bool) {
 	assertionOk := true
-	lst := make([]balance.Color, 0, len(expect))
+	lst := make([]ledgerstate.Color, 0, len(expect))
 	for col := range expect {
 		lst = append(lst, col)
 	}

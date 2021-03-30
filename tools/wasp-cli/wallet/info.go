@@ -1,9 +1,6 @@
 package wallet
 
 import (
-	"github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/balance"
-	valuetransaction "github.com/iotaledger/goshimmer/dapps/valuetransfers/packages/transaction"
-	"github.com/iotaledger/wasp/packages/txutil"
 	"github.com/iotaledger/wasp/tools/wasp-cli/config"
 	"github.com/iotaledger/wasp/tools/wasp-cli/log"
 )
@@ -21,7 +18,7 @@ func balanceCmd(args []string) {
 	wallet := Load()
 	address := wallet.Address()
 
-	outs, err := config.GoshimmerClient().GetConfirmedAccountOutputs(&address)
+	outs, err := config.GoshimmerClient().GetConfirmedOutputs(address)
 	log.Check(err)
 
 	log.Printf("Address index %d\n", addressIndex)

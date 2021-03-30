@@ -1,6 +1,7 @@
 package dict
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -53,11 +54,6 @@ func (d Dict) Clone() Dict {
 		return true
 	})
 	return clone
-}
-
-// FromGoMap casts map to Dict
-func FromGoMap(d map[kv.Key][]byte) Dict {
-	return d
 }
 
 // FromKVStore convert (copy) any KVStore to dict
@@ -254,6 +250,22 @@ func (d Dict) Hash() hashing.HashValue {
 		data = append(data, v)
 	}
 	return hashing.HashData(data...)
+}
+
+func (d Dict) Equals(d1 Dict) bool {
+	if len(d) != len(d1) {
+		return false
+	}
+	for k, v := range d {
+		v1, ok := d1[k]
+		if !ok {
+			return false
+		}
+		if !bytes.Equal(v, v1) {
+			return false
+		}
+	}
+	return true
 }
 
 // JSONDict is the JSON-compatible representation of a Dict

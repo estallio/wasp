@@ -17,7 +17,7 @@ const OWNER_MARGIN_MAX: i64 = 100;
 pub fn func_finalize_auction(ctx: &ScFuncContext) {
     ctx.log("fairauction.finalize");
     // only SC itself can invoke this function
-    ctx.require(ctx.caller() == ctx.contract_id().as_agent_id(), "no permission");
+    ctx.require(ctx.caller() == ctx.account_id(), "no permission");
 
     let p = ctx.params();
     let param_color = p.get_color(PARAM_COLOR);
@@ -35,7 +35,7 @@ pub fn func_finalize_auction(ctx: &ScFuncContext) {
         ctx.log(&("No one bid on ".to_string() + &color.to_string()));
         let mut owner_fee = auction.minimum_bid * auction.owner_margin / 1000;
         if owner_fee == 0 {
-            owner_fee = 1
+            owner_fee = 1;
         }
         // finalizeAuction request token was probably not confirmed yet
         transfer(ctx, &ctx.contract_creator(), &ScColor::IOTA, owner_fee - 1);
@@ -176,7 +176,7 @@ pub fn func_start_auction(ctx: &ScFuncContext) {
 
     let mut description = param_description.value();
     if description == "" {
-        description = "N/A".to_string()
+        description = "N/A".to_string();
     }
     if description.len() > MAX_DESCRIPTION_LENGTH {
         let ss: String = description.chars().take(MAX_DESCRIPTION_LENGTH).collect();
@@ -223,7 +223,8 @@ pub fn func_start_auction(ctx: &ScFuncContext) {
 
     let finalize_params = ScMutableMap::new();
     finalize_params.get_color(VAR_COLOR).set_value(&auction.color);
-    ctx.post_self(HFUNC_FINALIZE_AUCTION, Some(finalize_params), None, duration * 60);
+    let transfer = ScTransfers::iotas(1);
+    ctx.post_self(HFUNC_FINALIZE_AUCTION, Some(finalize_params), transfer, duration * 60);
     ctx.log("fairauction.startAuction ok");
 }
 

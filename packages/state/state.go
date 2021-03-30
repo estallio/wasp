@@ -3,6 +3,8 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/wasp/packages/dbprovider"
 	"io"
 
@@ -25,17 +27,29 @@ type virtualState struct {
 	variables  buffered.BufferedKVStore
 }
 
-func NewVirtualState(db kvstore.KVStore, chainID *coretypes.ChainID) *virtualState {
-	return &virtualState{
-		chainID:   *chainID,
+func NewVirtualState(db kvstore.KVStore, chainID ...*coretypes.ChainID) *virtualState {
+	ret := &virtualState{
 		db:        db,
 		variables: buffered.NewBufferedKVStore(subRealm(db, []byte{dbprovider.ObjectTypeStateVariable})),
 		empty:     true,
 	}
+	if len(chainID) > 0 {
+		ret.chainID = *chainID[0]
+	}
+	return ret
 }
 
 func NewEmptyVirtualState(chainID *coretypes.ChainID, rProvider registry.RegistryProvider) *virtualState {
 	return NewVirtualState(getSCPartition(rProvider, chainID), chainID)
+}
+
+func OriginStateHash() hashing.HashValue {
+	emptyVirtualState := NewVirtualState(mapdb.NewMapDB())
+	originBlock := MustNewOriginBlock(ledgerstate.TransactionID{})
+	if err := emptyVirtualState.ApplyBlock(originBlock); err != nil {
+		panic(err)
+	}
+	return emptyVirtualState.Hash()
 }
 
 func getSCPartition(rProvider registry.RegistryProvider, chainID *coretypes.ChainID) kvstore.KVStore {
@@ -176,7 +190,7 @@ func (vs *virtualState) CommitToDb(b Block) error {
 	// store processed request IDs
 	// TODO store request IDs in the 'log' contract
 	for _, rid := range b.RequestIDs() {
-		keys = append(keys, dbkeyRequest(rid))
+		keys = append(keys, dbkeyRequest(&rid))
 		values = append(values, []byte{0})
 	}
 
@@ -222,7 +236,7 @@ func loadSolidState(db kvstore.KVStore, chainID *coretypes.ChainID) (VirtualStat
 		return nil, nil, false, fmt.Errorf("loading variable state: %v", err)
 	}
 
-	batch, err := NewBlockFromBytes(values[1])
+	batch, err := BlockFromBytes(values[1])
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("loading block: %v", err)
 	}
@@ -240,6 +254,6 @@ func dbkeyRequest(reqid *coretypes.RequestID) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeProcessedRequestId, reqid[:])
 }
 
-func IsRequestCompleted(addr *coretypes.ChainID, reqid *coretypes.RequestID, rProvider registry.RegistryProvider) (bool, error) {
-	return getSCPartition(rProvider, addr).Has(dbkeyRequest(reqid))
+func IsRequestCompleted(addr *coretypes.ChainID, reqid coretypes.RequestID, rProvider registry.RegistryProvider) (bool, error) {
+	return getSCPartition(rProvider, addr).Has(dbkeyRequest(&reqid))
 }
