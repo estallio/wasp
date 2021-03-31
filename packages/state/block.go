@@ -10,7 +10,6 @@ import (
 	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/util"
 )
 
@@ -188,8 +187,8 @@ func dbkeyBatch(stateIndex uint32) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeStateUpdateBatch, util.Uint32To4Bytes(stateIndex))
 }
 
-func LoadBlock(chainID *coretypes.ChainID, stateIndex uint32, rProvider registry.RegistryProvider) (Block, error) {
-	data, err := rProvider.GetDBProvider().GetPartition(chainID).Get(dbkeyBatch(stateIndex))
+func LoadBlock(chainID *coretypes.ChainID, stateIndex uint32, dbProvider *dbprovider.DBProvider) (Block, error) {
+	data, err := dbProvider.GetPartition(chainID).Get(dbkeyBatch(stateIndex))
 	if err == kvstore.ErrKeyNotFound {
 		return nil, nil
 	}

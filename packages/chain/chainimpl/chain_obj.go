@@ -19,7 +19,6 @@ import (
 	"github.com/iotaledger/wasp/packages/chain/statemgr"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/peering"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/util"
 	"go.uber.org/atomic"
 )
@@ -46,15 +45,17 @@ type chainObj struct {
 	netProvider                  peering.NetworkProvider
 	dksProvider                  tcrypto.RegistryProvider
 	blobProvider                 coretypes.BlobCache
+	chainProvider                chain.RegistryProvider
 }
 
 func newChainObj(
-	chr *registry.ChainRecord,
+	chr *chain.ChainRecord,
 	log *logger.Logger,
 	nodeConn *txstream.Client,
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
+	chainProvider chain.RegistryProvider,
 	onActivation func(),
 ) chain.Chain {
 	log.Debugf("creating chain: %s", chr)
@@ -68,13 +69,14 @@ func newChainObj(
 		eventRequestProcessed: events.NewEvent(func(handler interface{}, params ...interface{}) {
 			handler.(func(_ coretypes.RequestID))(params[0].(coretypes.RequestID))
 		}),
-		log:          chainLog,
-		nodeConn:     nodeConn,
-		netProvider:  netProvider,
-		dksProvider:  dksProvider,
-		blobProvider: blobProvider,
+		log:           chainLog,
+		nodeConn:      nodeConn,
+		netProvider:   netProvider,
+		dksProvider:   dksProvider,
+		blobProvider:  blobProvider,
+		chainProvider: chainProvider,
 	}
-	ret.stateMgr = statemgr.New(ret, newPeers(nil), ret.log)
+	ret.stateMgr = statemgr.New(ret, newPeers(nil), ret.log, chainProvider.GetDBProvider())
 	go func() {
 		for msg := range ret.chMsg {
 			ret.dispatchMessage(msg)
@@ -284,7 +286,7 @@ func (c *chainObj) processStateMessage(msg *chain.StateMsg) {
 	}
 	c.committee, c.consensus = nil, nil
 	var err error
-	if c.committee, err = NewCommittee(c, msg.ChainOutput.GetStateAddress(), c.netProvider, c.dksProvider); err != nil {
+	if c.committee, err = NewCommittee(c, msg.ChainOutput.GetStateAddress(), c.netProvider, c.dksProvider, c.chainProvider); err != nil {
 		c.committee = nil
 		c.log.Errorf("failed to create committee object for address %s. ChainID: %s",
 			msg.ChainOutput.GetStateAddress(), c.chainID)
@@ -293,6 +295,6 @@ func (c *chainObj) processStateMessage(msg *chain.StateMsg) {
 	c.committee.OnPeerMessage(func(recv *peering.RecvEvent) {
 		c.ReceiveMessage(recv.Msg)
 	})
-	c.consensus = consensus.New(c.committee, c.nodeConn, c.log)
+	c.consensus = consensus.New(c.committee, c.nodeConn, c.log, c.chainProvider.GetDBProvider())
 	c.stateMgr.SetPeers(newPeers(c.committee))
 }

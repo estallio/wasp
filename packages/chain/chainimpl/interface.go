@@ -193,6 +193,10 @@ func (c *chainObj) BlobCache() coretypes.BlobCache {
 	return c.blobProvider
 }
 
+func (c *chainObj) RegistryProvider() chain.RegistryProvider {
+	return c.chainProvider
+}
+
 func (c *chainObj) GetRequestProcessingStatus(reqID *coretypes.RequestID) chain.RequestProcessingStatus {
 	if c.IsDismissed() {
 		return chain.RequestProcessingStatusUnknown
@@ -202,7 +206,7 @@ func (c *chainObj) GetRequestProcessingStatus(reqID *coretypes.RequestID) chain.
 			return chain.RequestProcessingStatusBacklog
 		}
 	}
-	processed, err := state.IsRequestCompleted(c.ID(), *reqID, c.rProvider)
+	processed, err := state.IsRequestCompleted(c.ID(), *reqID, c.chainProvider.GetDBProvider())
 	if err != nil || !processed {
 		return chain.RequestProcessingStatusUnknown
 	}

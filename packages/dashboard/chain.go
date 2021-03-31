@@ -9,12 +9,10 @@ import (
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv/codec"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/vm/core/accounts"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/plugins/chains"
-	registry_plgn "github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 )
 
@@ -45,19 +43,18 @@ func handleChain(c echo.Context) error {
 		ChainID:            *chainid,
 	}
 
-	registry := registry_plgn.DefaultRegistry()
-	result.ChainRecord, err = registry.ChainRecordFromRegistry(chainid)
+	theChain := chains.AllChains().Get(chainid)
+	registry := theChain.RegistryProvider()
+	result.ChainRecord, err = registry.GetChainRecord(chainid)
 	if err != nil {
 		return err
 	}
 
 	if result.ChainRecord != nil && result.ChainRecord.Active {
-		result.VirtualState, result.Block, _, err = state.LoadSolidState(chainid, registry)
+		result.VirtualState, result.Block, _, err = state.LoadSolidState(chainid, registry.GetDBProvider())
 		if err != nil {
 			return err
 		}
-
-		theChain := chains.AllChains().Get(chainid)
 
 		result.Committee.Size = theChain.Committee().Size()
 		result.Committee.Quorum = theChain.Committee().Quorum()
@@ -126,7 +123,7 @@ type ChainTemplateParams struct {
 
 	ChainID coretypes.ChainID
 
-	ChainRecord  *registry.ChainRecord
+	ChainRecord  *chain.ChainRecord
 	Block        state.Block
 	VirtualState state.VirtualState
 	RootInfo     RootInfo

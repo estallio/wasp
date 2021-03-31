@@ -27,8 +27,3 @@ func NewRegistry(suite tcrypto.Suite, log *logger.Logger, dbp *dbprovider.DBProv
 	}
 	return ret
 }
-
-//TODO: remove this method somehow after the merge
-func (rImplThis *Impl) GetDBProvider() *dbprovider.DBProvider {
-	return rImplThis.dbProvider
-}

@@ -3,6 +3,9 @@ all: build
 build:
 	go build ./...
 
+build-wasp:
+	go build
+
 test:
 	go install ./...
 	go clean -testcache

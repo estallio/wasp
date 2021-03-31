@@ -11,22 +11,27 @@ import (
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	registry_pkg "github.com/iotaledger/wasp/packages/registry"
+	"github.com/iotaledger/wasp/packages/tcrypto"
 	"github.com/iotaledger/wasp/plugins/peering"
-	"github.com/iotaledger/wasp/plugins/registry"
 )
 
 type Chains struct {
-	mutex     sync.RWMutex
-	log       *logger.Logger
-	allChains map[[ledgerstate.AddressLength]byte]chain.Chain
-	nodeConn  *txstream.Client
+	mutex         sync.RWMutex
+	log           *logger.Logger
+	allChains     map[[ledgerstate.AddressLength]byte]chain.Chain
+	nodeConn      *txstream.Client
+	dksProvider   tcrypto.RegistryProvider
+	blobProvider  coretypes.BlobCache
+	chainProvider chain.RegistryProvider
 }
 
-func New(log *logger.Logger) *Chains {
+func New(log *logger.Logger, dksProvider tcrypto.RegistryProvider, blobProvider coretypes.BlobCache, chainProvider chain.RegistryProvider) *Chains {
 	ret := &Chains{
-		log:       log,
-		allChains: make(map[[ledgerstate.AddressLength]byte]chain.Chain),
+		log:           log,
+		allChains:     make(map[[ledgerstate.AddressLength]byte]chain.Chain),
+		dksProvider:   dksProvider,
+		blobProvider:  blobProvider,
+		chainProvider: chainProvider,
 	}
 	return ret
 }
@@ -52,7 +57,7 @@ func (c *Chains) Attach(nodeConn *txstream.Client) {
 }
 
 func (c *Chains) ActivateAllFromRegistry() error {
-	chainRecords, err := registry_pkg.GetChainRecords()
+	chainRecords, err := c.chainProvider.GetChainRecords()
 	if err != nil {
 		return err
 	}
@@ -77,7 +82,7 @@ func (c *Chains) ActivateAllFromRegistry() error {
 // - creates chain object
 // - insert it into the runtime registry
 // - subscribes for related transactions in he IOTA node
-func (c *Chains) Activate(chr *registry_pkg.ChainRecord) error {
+func (c *Chains) Activate(chr *chain.ChainRecord) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -91,8 +96,7 @@ func (c *Chains) Activate(chr *registry_pkg.ChainRecord) error {
 		return nil
 	}
 	// create new chain object
-	defaultRegistry := registry.DefaultRegistry()
-	ch := chain.New(chr, c.log, c.nodeConn, peering.DefaultNetworkProvider(), defaultRegistry, defaultRegistry, func() {
+	ch := chain.New(chr, c.log, c.nodeConn, peering.DefaultNetworkProvider(), c.dksProvider, c.blobProvider, c.chainProvider, func() {
 		c.nodeConn.Subscribe(chr.ChainID.AliasAddress)
 	})
 	if ch != nil {
@@ -105,7 +109,7 @@ func (c *Chains) Activate(chr *registry_pkg.ChainRecord) error {
 }
 
 // Deactivate deactivates chain in the node
-func (c *Chains) Deactivate(chr *registry_pkg.ChainRecord) error {
+func (c *Chains) Deactivate(chr *chain.ChainRecord) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 

@@ -43,7 +43,7 @@ func (sm *stateManager) eventGetBlockMsg(msg *chain.GetBlockMsg) {
 		"sender index", msg.SenderIndex,
 		"block index", msg.BlockIndex,
 	)
-	block, err := state.LoadBlock(sm.chain.ID(), msg.BlockIndex, sm.rProvider)
+	block, err := state.LoadBlock(sm.chain.ID(), msg.BlockIndex, sm.dbProvider)
 	if err != nil || block == nil {
 		// can't load block, can't respond
 		return

@@ -6,7 +6,6 @@ import (
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/peering"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/tcrypto"
 	"github.com/iotaledger/wasp/packages/util"
 	"golang.org/x/xerrors"
@@ -23,8 +22,8 @@ type committeeObj struct {
 	attachID    interface{}
 }
 
-func NewCommittee(chainObj chain.Chain, stateAddr ledgerstate.Address, netProvider peering.NetworkProvider, dksProvider tcrypto.RegistryProvider) (chain.Committee, error) {
-	cmtRec, err := registry.CommitteeRecordFromRegistry(stateAddr)
+func NewCommittee(chainObj chain.Chain, stateAddr ledgerstate.Address, netProvider peering.NetworkProvider, dksProvider tcrypto.RegistryProvider, chainProvider chain.RegistryProvider) (chain.Committee, error) {
+	cmtRec, err := chainProvider.GetCommitteeRecord(stateAddr)
 	if err != nil || cmtRec == nil {
 		return nil, xerrors.Errorf(
 			"NewCommittee: failed to lead committee record for address %s. err = %v", stateAddr, err)

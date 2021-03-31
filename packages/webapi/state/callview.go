@@ -12,7 +12,6 @@ import (
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
 	"github.com/iotaledger/wasp/plugins/chains"
-	"github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
 	"github.com/pangpanglabs/echoswagger/v2"
 )
@@ -55,7 +54,7 @@ func handleCallView(c echo.Context) error {
 		return httperrors.NotFound(fmt.Sprintf("Chain not found: %s", chainID))
 	}
 
-	vctx, err := viewcontext.NewFromDB(*theChain.ID(), theChain.Processors(), registry.DefaultRegistry())
+	vctx, err := viewcontext.NewFromDB(*theChain.ID(), theChain.Processors(), theChain.RegistryProvider().GetDBProvider())
 	if err != nil {
 		return fmt.Errorf(fmt.Sprintf("Failed to create context: %v", err))
 	}

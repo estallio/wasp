@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/iotaledger/wasp/packages/registry"
+	"github.com/iotaledger/wasp/packages/chain"
 )
 
 type CommitteeRecord struct {
@@ -9,15 +9,15 @@ type CommitteeRecord struct {
 	CommitteeNodes []string `swagger:"desc(List of committee nodes (network IDs))"`
 }
 
-func NewCommitteeRecord(bd *registry.CommitteeRecord) *CommitteeRecord {
+func NewCommitteeRecord(bd *chain.CommitteeRecord) *CommitteeRecord {
 	return &CommitteeRecord{
 		Address:        NewAddress(bd.Address),
 		CommitteeNodes: bd.CommitteeNodes,
 	}
 }
 
-func (bd *CommitteeRecord) Record() *registry.CommitteeRecord {
-	return &registry.CommitteeRecord{
+func (bd *CommitteeRecord) Record() *chain.CommitteeRecord {
+	return &chain.CommitteeRecord{
 		Address:        bd.Address.Address(),
 		CommitteeNodes: bd.CommitteeNodes,
 	}

@@ -7,11 +7,10 @@ import (
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/kv/dict"
 	"github.com/iotaledger/wasp/packages/vm/viewcontext"
-	"github.com/iotaledger/wasp/plugins/registry"
 )
 
 func callView(chain chain.Chain, hname coretypes.Hname, fname string, params dict.Dict) (dict.Dict, error) {
-	vctx, err := viewcontext.NewFromDB(*chain.ID(), chain.Processors(), registry.DefaultRegistry())
+	vctx, err := viewcontext.NewFromDB(*chain.ID(), chain.Processors(), chain.RegistryProvider().GetDBProvider())
 	if err != nil {
 		return nil, fmt.Errorf(fmt.Sprintf("Failed to create context: %v", err))
 	}

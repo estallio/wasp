@@ -12,8 +12,8 @@ import (
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
+	"github.com/iotaledger/wasp/packages/dbprovider"
 	"github.com/iotaledger/wasp/packages/hashing"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/tcrypto/tbdn"
 	"github.com/iotaledger/wasp/packages/util"
@@ -67,7 +67,7 @@ type operator struct {
 	eventTransactionInclusionLevelMsgCh chan *chain.InclusionStateMsg
 	eventTimerMsgCh                     chan chain.TimerTick
 	closeCh                             chan bool
-	rProvider                           registry.RegistryProvider
+	dbProvider                          *dbprovider.DBProvider
 }
 
 type leaderStatus struct {
@@ -97,7 +97,7 @@ type request struct {
 	log *logger.Logger
 }
 
-func New(committee chain.Committee, nodeConn *txstream.Client, log *logger.Logger, rp registry.RegistryProvider) *operator {
+func New(committee chain.Committee, nodeConn *txstream.Client, log *logger.Logger, dbProvider *dbprovider.DBProvider) *operator {
 	ret := &operator{
 		committee:                           committee,
 		nodeConn:                            nodeConn,
@@ -115,7 +115,7 @@ func New(committee chain.Committee, nodeConn *txstream.Client, log *logger.Logge
 		eventTransactionInclusionLevelMsgCh: make(chan *chain.InclusionStateMsg),
 		eventTimerMsgCh:                     make(chan chain.TimerTick),
 		closeCh:                             make(chan bool),
-		rProvider:                           rp,
+		dbProvider:                          dbProvider,
 	}
 	ret.setNextConsensusStage(consensusStageNoSync)
 	go ret.recvLoop()

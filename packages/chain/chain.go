@@ -11,7 +11,6 @@ import (
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/peering"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/tcrypto"
 	"github.com/iotaledger/wasp/packages/vm/processors"
 	"sync"
@@ -47,6 +46,7 @@ type Chain interface {
 	Committee() Committee
 	ID() *coretypes.ChainID
 	BlobCache() coretypes.BlobCache
+	RegistryProvider() RegistryProvider
 
 	// TODO distinguish external messages from internal and peer messages
 	ReceiveMessage(interface{}) // generic
@@ -114,13 +114,13 @@ type Consensus interface {
 }
 
 type chainConstructor func(
-	chr *registry.ChainRecord,
+	chr *ChainRecord,
 	log *logger.Logger,
 	nodeConn *txstream.Client,
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
-	rProvider registry.RegistryProvider,
+	rProvider RegistryProvider,
 	onActivation func(),
 ) Chain
 
@@ -138,13 +138,13 @@ func RegisterChainConstructor(constr chainConstructor) {
 }
 
 func New(
-	chr *registry.ChainRecord,
+	chr *ChainRecord,
 	log *logger.Logger,
 	nodeConn *txstream.Client,
 	netProvider peering.NetworkProvider,
 	dksProvider tcrypto.RegistryProvider,
 	blobProvider coretypes.BlobCache,
-	rProvider registry.RegistryProvider,
+	rProvider RegistryProvider,
 	onActivation func(),
 ) Chain {
 	return constructorNew(chr, log, nodeConn, netProvider, dksProvider, blobProvider, rProvider, onActivation)

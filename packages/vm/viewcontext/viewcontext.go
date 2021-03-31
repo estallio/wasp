@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"github.com/iotaledger/hive.go/logger"
 	"github.com/iotaledger/wasp/packages/coretypes"
+	"github.com/iotaledger/wasp/packages/dbprovider"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv"
 	"github.com/iotaledger/wasp/packages/kv/buffered"
 	"github.com/iotaledger/wasp/packages/kv/dict"
 	"github.com/iotaledger/wasp/packages/kv/subrealm"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/state"
 	"github.com/iotaledger/wasp/packages/vm/core/blob"
 	"github.com/iotaledger/wasp/packages/vm/core/root"
@@ -24,8 +24,8 @@ type viewcontext struct {
 	log        *logger.Logger
 }
 
-func NewFromDB(chainID coretypes.ChainID, proc *processors.ProcessorCache, rProvider registry.RegistryProvider) (*viewcontext, error) {
-	state_, _, ok, err := state.LoadSolidState(&chainID, rProvider)
+func NewFromDB(chainID coretypes.ChainID, proc *processors.ProcessorCache, dbProvider *dbprovider.DBProvider) (*viewcontext, error) {
+	state_, _, ok, err := state.LoadSolidState(&chainID, dbProvider)
 
 	if err != nil {
 		return nil, err

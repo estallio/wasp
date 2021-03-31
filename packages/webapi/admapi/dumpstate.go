@@ -12,7 +12,7 @@ import (
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/model"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
-	"github.com/iotaledger/wasp/plugins/registry"
+	"github.com/iotaledger/wasp/plugins/database"
 	"github.com/labstack/echo/v4"
 	"github.com/pangpanglabs/echoswagger/v2"
 )
@@ -35,7 +35,7 @@ func handleDumpSCState(c echo.Context) error {
 		return httperrors.BadRequest(fmt.Sprintf("Invalid SC id: %s", c.Param("contractHname")))
 	}
 
-	virtualState, _, ok, err := state.LoadSolidState(chainID, registry.DefaultRegistry())
+	virtualState, _, ok, err := state.LoadSolidState(chainID, database.GetDefaultDBProvider())
 	if err != nil {
 		return err
 	}

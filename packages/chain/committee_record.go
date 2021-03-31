@@ -1,12 +1,9 @@
-package registry
+package chain
 
 import (
 	"fmt"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate"
-	"github.com/iotaledger/hive.go/kvstore"
 	"github.com/iotaledger/hive.go/marshalutil"
-	"github.com/iotaledger/wasp/packages/dbprovider"
-	"github.com/iotaledger/wasp/plugins/database"
 )
 
 // CommitteeRecord represents committee information
@@ -59,19 +56,6 @@ func CommitteeRecordFromBytes(data []byte) (*CommitteeRecord, error) {
 	return CommitteeRecordFromMarshalUtil(marshalutil.New(data))
 }
 
-// CommitteeRecordFromRegistry reads CommitteeRecord from registry.
-// Returns nil if not found
-func CommitteeRecordFromRegistry(addr ledgerstate.Address) (*CommitteeRecord, error) {
-	data, err := database.GetRegistryPartition().Get(dbKeyCommitteeRecord(addr))
-	if err == kvstore.ErrKeyNotFound {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return CommitteeRecordFromBytes(data)
-}
-
 func (rec *CommitteeRecord) Bytes() []byte {
 	mu := marshalutil.New().
 		WriteBytes(rec.Address.Bytes()).
@@ -81,14 +65,6 @@ func (rec *CommitteeRecord) Bytes() []byte {
 		mu.WriteUint16(uint16(len(b))).WriteBytes(b)
 	}
 	return mu.Bytes()
-}
-
-func dbKeyCommitteeRecord(addr ledgerstate.Address) []byte {
-	return dbprovider.MakeKey(dbprovider.ObjectTypeCommitteeRecord, addr.Bytes())
-}
-
-func (rec *CommitteeRecord) SaveToRegistry() error {
-	return database.GetRegistryPartition().Set(dbKeyCommitteeRecord(rec.Address), rec.Bytes())
 }
 
 func (rec *CommitteeRecord) String() string {

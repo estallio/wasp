@@ -3,7 +3,7 @@ package dashboard
 import (
 	"net/http"
 
-	"github.com/iotaledger/wasp/packages/registry"
+	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/plugins/chains"
 	registry_plgn "github.com/iotaledger/wasp/plugins/registry"
 	"github.com/labstack/echo/v4"
@@ -56,7 +56,7 @@ type ChainListTemplateParams struct {
 }
 
 type ChainOverview struct {
-	ChainRecord *registry.ChainRecord
+	ChainRecord *chain.ChainRecord
 	RootInfo    RootInfo
 	Error       error
 }
