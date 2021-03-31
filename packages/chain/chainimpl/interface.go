@@ -197,7 +197,7 @@ func (c *chainObj) RegistryProvider() chain.RegistryProvider {
 	return c.chainProvider
 }
 
-func (c *chainObj) GetRequestProcessingStatus(reqID *coretypes.RequestID) chain.RequestProcessingStatus {
+func (c *chainObj) GetRequestProcessingStatus(reqID coretypes.RequestID) chain.RequestProcessingStatus {
 	if c.IsDismissed() {
 		return chain.RequestProcessingStatusUnknown
 	}
@@ -206,7 +206,7 @@ func (c *chainObj) GetRequestProcessingStatus(reqID *coretypes.RequestID) chain.
 			return chain.RequestProcessingStatusBacklog
 		}
 	}
-	processed, err := state.IsRequestCompleted(c.ID(), *reqID, c.chainProvider.GetDBProvider())
+	processed, err := state.IsRequestCompleted(c.ID(), reqID, c.chainProvider.GetDBProvider())
 	if err != nil || !processed {
 		return chain.RequestProcessingStatusUnknown
 	}
@@ -219,4 +219,8 @@ func (c *chainObj) Processors() *processors.ProcessorCache {
 
 func (c *chainObj) EventRequestProcessed() *events.Event {
 	return c.eventRequestProcessed
+}
+
+func (c *chainObj) Mempool() chain.Mempool {
+	return c.mempool
 }

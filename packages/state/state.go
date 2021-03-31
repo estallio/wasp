@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate"
-	"github.com/iotaledger/hive.go/kvstore/mapdb"
-	"github.com/iotaledger/wasp/packages/dbprovider"
-	"io"
-
 	"github.com/iotaledger/hive.go/kvstore"
+	"github.com/iotaledger/hive.go/kvstore/mapdb"
 	"github.com/iotaledger/wasp/packages/coretypes"
+	"github.com/iotaledger/wasp/packages/dbprovider"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/kv"
 	"github.com/iotaledger/wasp/packages/kv/buffered"
 	"github.com/iotaledger/wasp/packages/util"
+	"io"
 )
 
 type virtualState struct {
@@ -189,7 +188,7 @@ func (vs *virtualState) CommitToDb(b Block) error {
 	// store processed request IDs
 	// TODO store request IDs in the 'log' contract
 	for _, rid := range b.RequestIDs() {
-		keys = append(keys, dbkeyRequest(&rid))
+		keys = append(keys, dbkeyRequest(rid))
 		values = append(values, []byte{0})
 	}
 
@@ -249,10 +248,10 @@ func dbkeyStateVariable(key kv.Key) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeStateVariable, []byte(key))
 }
 
-func dbkeyRequest(reqid *coretypes.RequestID) []byte {
+func dbkeyRequest(reqid coretypes.RequestID) []byte {
 	return dbprovider.MakeKey(dbprovider.ObjectTypeProcessedRequestId, reqid[:])
 }
 
 func IsRequestCompleted(addr *coretypes.ChainID, reqid coretypes.RequestID, dbProvider *dbprovider.DBProvider) (bool, error) {
-	return getSCPartition(addr, dbProvider).Has(dbkeyRequest(&reqid))
+	return getSCPartition(addr, dbProvider).Has(dbkeyRequest(reqid))
 }

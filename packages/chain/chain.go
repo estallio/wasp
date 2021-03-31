@@ -26,24 +26,25 @@ type Committee interface {
 	SendMsg(targetPeerIndex uint16, msgType byte, msgData []byte) error
 	SendMsgToPeers(msgType byte, msgData []byte, ts int64) uint16
 	IsAlivePeer(peerIndex uint16) bool
-	QuorumIsAlive() bool
+	QuorumIsAlive(quorum ...uint16) bool
 	PeerStatus() []*PeerStatus
 	OnPeerMessage(fun func(recv *peering.RecvEvent))
 	Close()
 	FeeDestination() coretypes.AgentID
 }
 
-// TODO temporary wrapper for Committee need replacement for all peers, not only committee
-type Peers interface {
+// TODO temporary wrapper for Committee need replacement for all peers, not only committee.
+//  Must be close to GroupProvider but less functions
+type PeerGroupProvider interface {
 	NumPeers() uint16
-	Quorum() uint16
-	QuorumIsAlive() bool
+	NumIsAlive(quorum uint16) bool
 	SendMsg(targetPeerIndex uint16, msgType byte, msgData []byte) error
 	SendToAllUntilFirstError(msgType byte, msgData []byte) uint16
 }
 
 type Chain interface {
 	Committee() Committee
+	Mempool() Mempool
 	ID() *coretypes.ChainID
 	BlobCache() coretypes.BlobCache
 	RegistryProvider() RegistryProvider
@@ -60,33 +61,14 @@ type Chain interface {
 	Dismiss()
 	IsDismissed() bool
 	// requests
-	GetRequestProcessingStatus(id *coretypes.RequestID) RequestProcessingStatus
+	GetRequestProcessingStatus(id coretypes.RequestID) RequestProcessingStatus
 	EventRequestProcessed() *events.Event
 	// chain processors
 	Processors() *processors.ProcessorCache
 }
 
-type PeerStatus struct {
-	Index     int
-	PeeringID string
-	IsSelf    bool
-	Connected bool
-}
-
-func (p *PeerStatus) String() string {
-	return fmt.Sprintf("%+v", *p)
-}
-
-type RequestProcessingStatus int
-
-const (
-	RequestProcessingStatusUnknown = RequestProcessingStatus(iota)
-	RequestProcessingStatusBacklog
-	RequestProcessingStatusCompleted
-)
-
 type StateManager interface {
-	SetPeers(Peers)
+	SetPeers(PeerGroupProvider)
 	EvidenceStateIndex(idx uint32)
 	EventStateIndexPingPongMsg(msg *StateIndexPingPongMsg)
 	EventGetBlockMsg(msg *GetBlockMsg)
@@ -110,8 +92,42 @@ type Consensus interface {
 	EventTimerMsg(TimerTick)
 	Close()
 	//
-	IsRequestInBacklog(*coretypes.RequestID) bool
+	IsRequestInBacklog(coretypes.RequestID) bool
 }
+
+type Mempool interface {
+	// ReceiveRequest request is introduced to the mempool. Must be prevalidated before
+	ReceiveRequest(req coretypes.Request)
+	// Marks request id as seen by the peer
+	MarkSeenByCommitteePeer(reqid *coretypes.RequestID, peerIndex uint16)
+	// Clears all marks about it was seen by whom. In case of committee change
+	ClearSeenMarks()
+	// returns all requests which are ready to be processed by the node: time unlocked and with solidified paranmeters
+	GetReadyList(seenThreshold uint16) []coretypes.Request
+	// removes requests from the mempool
+	RemoveRequests(reqs ...*coretypes.RequestID)
+	//
+	Close()
+}
+
+type PeerStatus struct {
+	Index     int
+	PeeringID string
+	IsSelf    bool
+	Connected bool
+}
+
+func (p *PeerStatus) String() string {
+	return fmt.Sprintf("%+v", *p)
+}
+
+type RequestProcessingStatus int
+
+const (
+	RequestProcessingStatusUnknown = RequestProcessingStatus(iota)
+	RequestProcessingStatusBacklog
+	RequestProcessingStatusCompleted
+)
 
 type chainConstructor func(
 	chr *ChainRecord,
@@ -148,4 +164,23 @@ func New(
 	onActivation func(),
 ) Chain {
 	return constructorNew(chr, log, nodeConn, netProvider, dksProvider, blobProvider, rProvider, onActivation)
+}
+
+type mempoolConstructor func(cache coretypes.BlobCache) Mempool
+
+var mempoolConstructorFun mempoolConstructor
+var mempoolConstructorFunMutex sync.Mutex
+
+func RegisterMempoollConstructor(constr mempoolConstructor) {
+	mempoolConstructorFunMutex.Lock()
+	defer mempoolConstructorFunMutex.Unlock()
+
+	if mempoolConstructorFun != nil {
+		panic("RegistermempoolConstructor: already registered")
+	}
+	mempoolConstructorFun = constr
+}
+
+func NewMempool(blobCache coretypes.BlobCache) Mempool {
+	return mempoolConstructorFun(blobCache)
 }

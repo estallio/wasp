@@ -46,7 +46,3 @@ func (w *Wallet) KeyPair() *ed25519.KeyPair {
 func (w *Wallet) Address() ledgerstate.Address {
 	return w.seed.Address(uint64(addressIndex)).Address()
 }
-
-func (w *Wallet) SignatureScheme() signaturescheme.SignatureScheme {
-	return signaturescheme.ED25519(*w.KeyPair())
-}

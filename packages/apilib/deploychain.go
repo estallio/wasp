@@ -7,18 +7,17 @@ import (
 	"fmt"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate"
 	"github.com/iotaledger/hive.go/crypto/ed25519"
-	"github.com/iotaledger/wasp/packages/sctransaction"
-	"io"
-	"io/ioutil"
-	"math/rand"
-	"time"
-
 	"github.com/iotaledger/wasp/client"
 	"github.com/iotaledger/wasp/client/level1"
 	"github.com/iotaledger/wasp/client/multiclient"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/registry"
+	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/webapi/model"
+	"io"
+	"io/ioutil"
+	"math/rand"
+	"time"
 )
 
 type CreateChainParams struct {
@@ -74,8 +73,8 @@ func DeployChain(par CreateChainParams) (*coretypes.ChainID, ledgerstate.Address
 
 	// ------------ put committee records to hosts
 	err = committee.PutCommitteeRecord(&registry.CommitteeRecord{
-		Address:        stateControllerAddr,
-		CommitteeNodes: par.CommitteeApiHosts,
+		Address: stateControllerAddr,
+		Nodes:   par.CommitteeApiHosts,
 	})
 	fmt.Fprint(textout, par.Prefix)
 	if err != nil {
@@ -178,7 +177,7 @@ func DeployChain(par CreateChainParams) (*coretypes.ChainID, ledgerstate.Address
 	}
 
 	// ---------- wait until the request is processed in all committee nodes
-	if err = committee.WaitUntilAllRequestsProcessed(reqTx, 30*time.Second); err != nil {
+	if err = committee.WaitUntilAllRequestsProcessed(chainID, reqTx, 30*time.Second); err != nil {
 		fmt.Fprintf(textout, "waiting root init request transaction.. FAILED: %v\n", err)
 		return nil, nil, err
 	}

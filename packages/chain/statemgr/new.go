@@ -14,12 +14,11 @@ import (
 	"github.com/iotaledger/wasp/packages/dbprovider"
 	"github.com/iotaledger/wasp/packages/hashing"
 	"github.com/iotaledger/wasp/packages/state"
-	"github.com/iotaledger/wasp/packages/util"
 )
 
 type stateManager struct {
 	chain chain.Chain
-	peers chain.Peers
+	peers chain.PeerGroupProvider
 
 	// becomes true after initially loaded state is validated.
 	// after that it is always true
@@ -62,9 +61,6 @@ type stateManager struct {
 	// current block being synced
 	syncedBatch *syncedBatch
 
-	// for the pseudo-random sequence of peers
-	permutation *util.Permutation16
-
 	// logger
 	log *logger.Logger
 
@@ -97,7 +93,7 @@ type pendingBlock struct {
 	stateTransactionRequestDeadline time.Time
 }
 
-func New(c chain.Chain, peers chain.Peers, log *logger.Logger, dbProvider *dbprovider.DBProvider) chain.StateManager {
+func New(c chain.Chain, peers chain.PeerGroupProvider, log *logger.Logger, dbProvider *dbprovider.DBProvider) chain.StateManager {
 	ret := &stateManager{
 		chain:                        c,
 		pendingBlocks:                make(map[hashing.HashValue]*pendingBlock),
@@ -119,7 +115,7 @@ func New(c chain.Chain, peers chain.Peers, log *logger.Logger, dbProvider *dbpro
 	return ret
 }
 
-func (sm *stateManager) SetPeers(p chain.Peers) {
+func (sm *stateManager) SetPeers(p chain.PeerGroupProvider) {
 	sm.peers = p
 	sm.pingPong = make([]bool, p.NumPeers())
 }

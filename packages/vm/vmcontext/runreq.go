@@ -61,7 +61,8 @@ func (vmctx *VMContext) RunTheRequest(req coretypes.Request, inputIndex int) {
 
 // mustSetUpRequestContext sets up VMContext for request
 func (vmctx *VMContext) mustSetUpRequestContext(req coretypes.Request) {
-	if req.Params() == nil {
+
+	if _, ok := req.Params(); !ok {
 		vmctx.log.Panicf("mustSetUpRequestContext.inconsistency: request args should had been solidified")
 	}
 	vmctx.req = req
@@ -69,18 +70,19 @@ func (vmctx *VMContext) mustSetUpRequestContext(req coretypes.Request) {
 		if err := vmctx.txBuilder.ConsumeInputByOutputID(req.Output().ID()); err != nil {
 			vmctx.log.Panicf("mustSetUpRequestContext.inconsistency : %v", err)
 		}
-
 	}
 	vmctx.timestamp += 1
 	t := time.Unix(0, vmctx.timestamp)
-	if input, ok := req.Output().(*ledgerstate.ExtendedLockedOutput); ok {
-		// it is an on-ledger request
-		if input.TimeLockedNow(t) {
-			vmctx.log.Panicf("mustSetUpRequestContext.inconsistency: input is time locked. Nowis: %v\nInput: %s\n", t, input.String())
-		}
-		if !input.UnlockAddressNow(t).Equals(vmctx.chainID.AsAddress()) {
-			vmctx.log.Panicf("mustSetUpRequestContext.inconsistency: input cannot be unlocked at %v.\nInput: %s\n chainID: %s",
-				t, input.String(), vmctx.chainID.String())
+	if req.Output() != nil {
+		if input, ok := req.Output().(*ledgerstate.ExtendedLockedOutput); ok {
+			// it is an on-ledger request
+			if input.TimeLockedNow(t) {
+				vmctx.log.Panicf("mustSetUpRequestContext.inconsistency: input is time locked. Nowis: %v\nInput: %s\n", t, input.String())
+			}
+			if !input.UnlockAddressNow(t).Equals(vmctx.chainID.AsAddress()) {
+				vmctx.log.Panicf("mustSetUpRequestContext.inconsistency: input cannot be unlocked at %v.\nInput: %s\n chainID: %s",
+					t, input.String(), vmctx.chainID.String())
+			}
 		}
 	}
 
@@ -181,8 +183,9 @@ func (vmctx *VMContext) mustCallFromRequest() {
 
 	// calling only non view entry points. Calling the view will trigger error and fallback
 	targetContract, entryPoint := vmctx.req.Target()
+	params, _ := vmctx.req.Params()
 	vmctx.lastResult, vmctx.lastError = vmctx.callNonViewByProgramHash(
-		targetContract, entryPoint, vmctx.req.Params(), vmctx.remainingAfterFees, vmctx.contractRecord.ProgramHash)
+		targetContract, entryPoint, params, vmctx.remainingAfterFees, vmctx.contractRecord.ProgramHash)
 }
 
 func (vmctx *VMContext) finalizeRequestCall() {

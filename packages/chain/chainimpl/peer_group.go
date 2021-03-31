@@ -11,9 +11,9 @@ type peerObj struct {
 	permutation *util.Permutation16
 }
 
-var _ chain.Peers = &peerObj{}
+var _ chain.PeerGroupProvider = &peerObj{}
 
-func newPeers(c chain.Committee) chain.Peers {
+func newPeers(c chain.Committee) chain.PeerGroupProvider {
 	ret := &peerObj{committee: c}
 	if c != nil {
 		var rndBytes [32]byte
@@ -28,13 +28,6 @@ func (p *peerObj) NumPeers() uint16 {
 		return 0
 	}
 	return p.committee.Size()
-}
-
-func (p *peerObj) Quorum() uint16 {
-	if p.committee == nil {
-		return 0
-	}
-	return p.committee.Quorum()
 }
 
 func (p *peerObj) SendMsg(targetPeerIndex uint16, msgType byte, msgData []byte) error {
@@ -61,9 +54,9 @@ func (p *peerObj) SendToAllUntilFirstError(msgType byte, msgData []byte) uint16 
 	return p.committee.Size()
 }
 
-func (p *peerObj) QuorumIsAlive() bool {
+func (p *peerObj) NumIsAlive(quorum uint16) bool {
 	if p.committee == nil {
 		return false
 	}
-	return p.committee.QuorumIsAlive()
+	return p.committee.QuorumIsAlive(quorum)
 }
