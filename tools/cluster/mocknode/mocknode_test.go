@@ -14,16 +14,10 @@ func TestMockNode(t *testing.T) {
 		t.Skip("Skipping mocknode test in short mode")
 	}
 
-	initOk := make(chan (bool))
-	m := Start(":5000", ":8080", initOk)
+	m := Start(":5000", ":8080")
 	defer m.Stop()
 
-	select {
-	case result := <-initOk:
-		require.True(t, result)
-	case <-time.After(1 * time.Second):
-		t.Fatalf("Timeout waiting for mocknode start")
-	}
+	time.Sleep(1 * time.Second)
 
 	_, addr := m.Ledger.NewKeyPairByIndex(2)
 

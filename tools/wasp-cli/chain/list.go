@@ -3,7 +3,7 @@ package chain
 import (
 	"fmt"
 
-	"github.com/iotaledger/wasp/packages/registry"
+	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/tools/wasp-cli/config"
 	"github.com/iotaledger/wasp/tools/wasp-cli/log"
 )
@@ -16,7 +16,7 @@ func listCmd(args []string) {
 	showChainList(chains)
 }
 
-func showChainList(chains []*registry.ChainRecord) {
+func showChainList(chains []*chain.ChainRecord) {
 	header := []string{"chainid", "active"}
 	rows := make([][]string, len(chains))
 	for i, chain := range chains {

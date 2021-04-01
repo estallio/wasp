@@ -9,10 +9,10 @@ import (
 	"github.com/pangpanglabs/echoswagger/v2"
 
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/webapi/httperrors"
 	"github.com/iotaledger/wasp/packages/webapi/model"
 	"github.com/iotaledger/wasp/packages/webapi/routes"
+	"github.com/iotaledger/wasp/plugins/registry"
 )
 
 func addCommitteeRecordEndpoints(adm echoswagger.ApiGroup) {
@@ -41,14 +41,15 @@ func handlePutCommitteeRecord(c echo.Context) error {
 
 	cr := req.Record()
 
-	bd2, err := registry.CommitteeRecordFromRegistry(cr.Address)
+	registry := registry.DefaultRegistry()
+	bd2, err := registry.GetCommitteeRecord(cr.Address)
 	if err != nil {
 		return err
 	}
 	if bd2 != nil {
 		return httperrors.Conflict(fmt.Sprintf("Record already exists: %s", cr.Address.Base58()))
 	}
-	if err = cr.SaveToRegistry(); err != nil {
+	if err = registry.SaveCommitteeRecord(cr); err != nil {
 		return err
 	}
 
@@ -62,7 +63,7 @@ func handleGetCommitteeRecord(c echo.Context) error {
 	if err != nil {
 		return httperrors.BadRequest(err.Error())
 	}
-	cr, err := registry.CommitteeRecordFromRegistry(address)
+	cr, err := registry.DefaultRegistry().GetCommitteeRecord(address)
 	if err != nil {
 		return err
 	}
