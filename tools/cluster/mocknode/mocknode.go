@@ -15,7 +15,7 @@ type MockNode struct {
 	log            *logger.Logger
 }
 
-func Start(txStreamBindAddress string, webapiBindAddress string, initOk chan<- bool) *MockNode {
+func Start(txStreamBindAddress string, webapiBindAddress string) *MockNode {
 	m := &MockNode{
 		log:            initLog(),
 		Ledger:         utxodbledger.New(),
@@ -23,10 +23,16 @@ func Start(txStreamBindAddress string, webapiBindAddress string, initOk chan<- b
 	}
 
 	// start the txstream server
-	go server.Listen(m.Ledger, txStreamBindAddress, m.log.Named("txstream"), m.shutdownSignal)
+	err := server.Listen(m.Ledger, txStreamBindAddress, m.log.Named("txstream"), m.shutdownSignal)
+	if err != nil {
+		panic(err)
+	}
 
 	// start the web api server
-	go m.startWebAPI(webapiBindAddress, initOk)
+	err = m.startWebAPI(webapiBindAddress)
+	if err != nil {
+		panic(err)
+	}
 
 	return m
 }

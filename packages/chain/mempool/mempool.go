@@ -1,10 +1,12 @@
 package mempool
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
 	"github.com/iotaledger/wasp/packages/sctransaction"
+	"sort"
 	"sync"
 	"time"
 )
@@ -69,12 +71,12 @@ func (m *mempool) ClearSeenMarks() {
 	}
 }
 
-func (m *mempool) RemoveRequests(reqs ...*coretypes.RequestID) {
+func (m *mempool) RemoveRequests(reqs ...coretypes.RequestID) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	for _, rid := range reqs {
-		delete(m.requests, *rid)
+		delete(m.requests, rid)
 	}
 }
 
@@ -110,7 +112,60 @@ func (m *mempool) GetReadyList(seenThreshold uint16) []coretypes.Request {
 			ret = append(ret, req.req)
 		}
 	}
+	sort.Slice(ret, func(i, j int) bool {
+		return bytes.Compare(ret[i].Output().ID().Bytes(), ret[j].Output().ID().Bytes()) < 0
+	})
 	return ret
+}
+
+func (m *mempool) GetReadyListFull(seenThreshold uint16) []*chain.ReadyListRecord {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	ret := make([]*chain.ReadyListRecord, 0, len(m.requests))
+	nowis := time.Now()
+	for _, req := range m.requests {
+		if isRequestReady(req, seenThreshold, nowis) {
+			rec := &chain.ReadyListRecord{
+				Request: req.req,
+				Seen:    make(map[uint16]bool),
+			}
+			for p := range req.seen {
+				rec.Seen[p] = true
+			}
+			ret = append(ret, rec)
+		}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return bytes.Compare(ret[i].Request.Output().ID().Bytes(), ret[j].Request.Output().ID().Bytes()) < 0
+	})
+	return ret
+}
+
+func (m *mempool) TakeAllReady(nowis time.Time, reqids ...coretypes.RequestID) ([]coretypes.Request, bool) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	ret := make([]coretypes.Request, len(reqids))
+	for i := range reqids {
+		req, ok := m.requests[reqids[i]]
+		if !ok {
+			return nil, false
+		}
+		if !isRequestReady(req, 0, nowis) {
+			return nil, false
+		}
+		ret[i] = req.req
+	}
+	return ret, true
+}
+
+func (m *mempool) HasRequest(id coretypes.RequestID) bool {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	rec, ok := m.requests[id]
+	return ok && rec.req != nil
 }
 
 func (m *mempool) Close() {

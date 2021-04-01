@@ -15,9 +15,10 @@ import (
 
 	"github.com/iotaledger/goshimmer/client/wallet/packages/seed"
 	"github.com/iotaledger/goshimmer/packages/ledgerstate"
+	"golang.org/x/xerrors"
+
 	"github.com/iotaledger/wasp/client"
-	"github.com/iotaledger/wasp/client/level1"
-	"github.com/iotaledger/wasp/client/level1/goshimmer"
+	"github.com/iotaledger/wasp/client/goshimmer"
 	"github.com/iotaledger/wasp/client/multiclient"
 	"github.com/iotaledger/wasp/packages/apilib"
 	"github.com/iotaledger/wasp/packages/util"
@@ -42,8 +43,8 @@ func New(name string, config *ClusterConfig) *Cluster {
 	}
 }
 
-func (clu *Cluster) Level1Client() level1.Level1Client {
-	return goshimmer.NewGoshimmerClient(clu.Config.goshimmerApiHost())
+func (clu *Cluster) GoshimmerClient() *goshimmer.Client {
+	return goshimmer.NewClient(clu.Config.goshimmerApiHost())
 }
 
 func (clu *Cluster) DeployDefaultChain() (*Chain, error) {
@@ -67,13 +68,13 @@ func (clu *Cluster) DeployChain(description string, committeeNodes []int, quorum
 		Cluster:        clu,
 	}
 
-	err := clu.Level1Client().RequestFunds(chain.OriginatorAddress())
+	err := clu.GoshimmerClient().RequestFunds(chain.OriginatorAddress())
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("RequestFunds: %w", err)
 	}
 
 	chainid, addr, err := apilib.DeployChain(apilib.CreateChainParams{
-		Node:                  clu.Level1Client(),
+		Node:                  clu.GoshimmerClient(),
 		CommitteeApiHosts:     chain.ApiHosts(),
 		CommitteePeeringHosts: chain.PeeringHosts(),
 		N:                     uint16(len(committeeNodes)),
@@ -84,7 +85,7 @@ func (clu *Cluster) DeployChain(description string, committeeNodes []int, quorum
 		Prefix:                "[cluster] ",
 	})
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("DeployChain: %w", err)
 	}
 
 	chain.Address = addr
@@ -212,23 +213,15 @@ func (cluster *Cluster) Start(dataPath string) error {
 func (cluster *Cluster) start(dataPath string) error {
 	fmt.Printf("[cluster] starting %d Wasp nodes...\n", cluster.Config.Wasp.NumNodes)
 
-	initOk := make(chan bool, cluster.Config.Wasp.NumNodes)
-
 	if !cluster.Config.Goshimmer.Provided {
-		goshimmer := mocknode.Start(
+		cluster.goshimmer = mocknode.Start(
 			fmt.Sprintf(":%d", cluster.Config.Goshimmer.TxStreamPort),
 			fmt.Sprintf(":%d", cluster.Config.Goshimmer.ApiPort),
-			initOk,
 		)
-		cluster.goshimmer = goshimmer
-
-		select {
-		case <-initOk:
-		case <-time.After(10 * time.Second):
-			return fmt.Errorf("Timeout starting goshimmer node\n")
-		}
 		fmt.Printf("[cluster] started goshimmer node\n")
 	}
+
+	initOk := make(chan bool, cluster.Config.Wasp.NumNodes)
 
 	for i := 0; i < cluster.Config.Wasp.NumNodes; i++ {
 		cmd, err := cluster.startServer("wasp", waspNodeDataPath(dataPath, i), fmt.Sprintf("wasp %d", i), initOk, "nanomsg publisher is running")
@@ -369,12 +362,12 @@ func (cluster *Cluster) StartMessageCounter(expectations map[string]int) (*Messa
 
 func (cluster *Cluster) PostTransaction(tx *ledgerstate.Transaction) error {
 	fmt.Printf("[cluster] posting request tx: %s\n", tx.ID().String())
-	err := cluster.Level1Client().PostTransaction(tx)
+	err := cluster.GoshimmerClient().PostTransaction(tx)
 	if err != nil {
 		fmt.Printf("[cluster] posting tx: %s err = %v\n", tx.String(), err)
 		return err
 	}
-	if err = cluster.Level1Client().WaitForConfirmation(tx.ID()); err != nil {
+	if err = cluster.GoshimmerClient().WaitForConfirmation(tx.ID()); err != nil {
 		fmt.Printf("[cluster] posting tx: %v\n", err)
 		return err
 	}
@@ -383,7 +376,7 @@ func (cluster *Cluster) PostTransaction(tx *ledgerstate.Transaction) error {
 }
 
 func (cluster *Cluster) VerifyAddressBalances(addr ledgerstate.Address, totalExpected uint64, expect map[ledgerstate.Color]uint64, comment ...string) bool {
-	allOuts, err := cluster.Level1Client().GetConfirmedOutputs(addr)
+	allOuts, err := cluster.GoshimmerClient().GetConfirmedOutputs(addr)
 	if err != nil {
 		fmt.Printf("[cluster] GetConfirmedOutputs error: %v\n", err)
 		return false
@@ -405,7 +398,7 @@ func (cluster *Cluster) VerifyAddressBalances(addr ledgerstate.Address, totalExp
 		cmt = " (" + comment[0] + ")"
 	}
 	fmt.Printf("[cluster] Inputs of the address %s%s\n      Total tokens: %d %s\n%s\n",
-		addr.String(), cmt, total, totalExpectedStr, dumpStr)
+		addr.Base58(), cmt, total, totalExpectedStr, dumpStr)
 
 	if !assertionOk {
 		fmt.Printf("[cluster] assertion on balances failed\n")
