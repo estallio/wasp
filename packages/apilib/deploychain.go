@@ -10,8 +10,8 @@ import (
 	"github.com/iotaledger/wasp/client"
 	"github.com/iotaledger/wasp/client/level1"
 	"github.com/iotaledger/wasp/client/multiclient"
+	"github.com/iotaledger/wasp/packages/chain"
 	"github.com/iotaledger/wasp/packages/coretypes"
-	"github.com/iotaledger/wasp/packages/registry"
 	"github.com/iotaledger/wasp/packages/sctransaction"
 	"github.com/iotaledger/wasp/packages/webapi/model"
 	"io"
@@ -72,7 +72,7 @@ func DeployChain(par CreateChainParams) (*coretypes.ChainID, ledgerstate.Address
 	committee := multiclient.New(par.CommitteeApiHosts)
 
 	// ------------ put committee records to hosts
-	err = committee.PutCommitteeRecord(&registry.CommitteeRecord{
+	err = committee.PutCommitteeRecord(&chain.CommitteeRecord{
 		Address: stateControllerAddr,
 		Nodes:   par.CommitteeApiHosts,
 	})
@@ -122,7 +122,7 @@ func DeployChain(par CreateChainParams) (*coretypes.ChainID, ledgerstate.Address
 	}
 
 	// ------------ put chain records to hosts
-	err = committee.PutChainRecord(&registry.ChainRecord{
+	err = committee.PutChainRecord(&chain.ChainRecord{
 		ChainID: chainID,
 	})
 

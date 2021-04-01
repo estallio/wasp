@@ -1,4 +1,4 @@
-package registry
+package chain
 
 import (
 	"github.com/iotaledger/wasp/packages/coretypes"
