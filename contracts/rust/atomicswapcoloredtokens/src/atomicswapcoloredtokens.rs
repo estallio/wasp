@@ -10,24 +10,21 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     let p = ctx.params();
 
     // get the id where the swap should be accessible
-    // TODO: check what type suits best for this variable, currently a string is fine, maybe a hash is better at a later point
+    // currently a string is fine as map-key, maybe a hash or simple bytes suite better at a later point
     let param_swap_id = p.get_string(PARAM_SWAP_ID);
 
     // next 3 params define from whom, how much and what type of color the sender wants to get for his/her deposit
     let param_color_receiver = p.get_color(PARAM_COLOR_RECEIVER);
     let param_amount_receiver = p.get_int64(PARAM_AMOUNT_RECEIVER);
-    // TODO: are agent ids also available on different chains? - Token colors are hold in the tangle, agent ids also?
-    //  I think they are handled by the root account contract so they are likely not accessible from different chains
     let param_address_receiver = p.get_address(PARAM_ADDRESS_RECEIVER);
 
     // next 2 parameters are not absolutely necessary, as they could be extracted from balances
-    // it was implemented this way to keep the effort small
-    // it would also be possible to exchange multiple different colors this way
+    // it was implemented the following way to keep the effort small
+    // it would also be possible to exchange multiple different colors this way and adjust the AtomicSwap type to include a "exchange color map"
     let param_color_sender = p.get_color(PARAM_COLOR_SENDER);
     let param_amount_sender = p.get_int64(PARAM_AMOUNT_SENDER);
 
     // get the sender - this is the one calling this contract/creating the swap
-    // TODO: what is the difference of agent ids, contract is and addresses? can a contract address also call this atomic swap function?
     let param_address_sender = ctx.caller().address();
 
     // get the parameter how long the atomic swap should be valid - this is only an additional feature
@@ -36,7 +33,7 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
 
     ctx.log("checking params now...");
 
-    // some checks if all necessary variables are set - only for unfortunate reasons when posting the tx
+    // check if all necessary variables are set - only for unfortunate reasons when posting the tx
     ctx.require(param_color_sender.exists(), "missing mandatory sender color");
     ctx.require(param_amount_sender.exists(), "missing mandatory sender amount");
     ctx.require(param_color_receiver.exists(), "missing mandatory receiver color");
@@ -46,11 +43,15 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
 
     ctx.log("checking amount now...");
 
-    // check amount of color is sufficient, other colors and balances are lost here
+    // check that the amount of color is sufficient
     let amount = ctx.incoming().balance(&param_color_sender.value());
     ctx.require(amount == param_amount_sender.value(), "transferred balance of color does not match amount parameter");
 
-    // TODO: we have a little problem in the next step
+    // check that no other color is transferred to the smart contract to prevent loosing other tokens
+    let color_length = ctx.incoming().colors().length();
+    ctx.require(color_length <= 1, "only one color is allowed to be transferred to the contract");
+
+    // we have a little problem in the next step
     //  fist, we have to define how we save an atomic swap object in the state
     //  as we have to access it later, we should have an unique id for the swap
     //  we should get sure it is possible that multiple agents can place multiple atomic swaps simultaneously
@@ -79,12 +80,11 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
         color_receiver: param_color_receiver.value(),
         amount_sender: param_amount_sender.value(),
         amount_receiver: param_amount_receiver.value(),
-        // TODO: do we need an the type address here? is this an agent id?
         address_sender: param_address_sender,
         address_receiver: param_address_receiver.value(),
         duration_open: param_duration.value(),
         when_started: ctx.timestamp() / 1000000000,
-        // TODO: is there any boolean support some time?
+        // for now, a number is sufficient to model the state, maybe there is any boolean or enum support sometime to model such states
         finished: 0,
     };
 
@@ -93,13 +93,18 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     swap.set_value(&atomic_swap.to_bytes());
 }
 
-pub fn func_cancel_swap(ctx: &ScFuncContext) {
-    // TODO: delete the auction object, free the swap id and transfer the funds - currently not possible with rust, this will be implemented soon
+// TODO: maybe also implement an open_swaps view - this is a little bit harder, as dynamic lists are not existing until now
+//  2 possibilities:
+//    1. save all swaps and keep them in state (expensive)
+//    2. run every time over all swaps and find open open swaps by agent_id or save open swap_ids in parallel in an array in a agent_id map (both methods require computational power)
 
+pub fn func_cancel_swap(ctx: &ScFuncContext) {
     let p = ctx.params();
 
     // get the id where the swap should be accessible
     let param_swap_id = p.get_string(PARAM_SWAP_ID);
+
+    ctx.require(param_swap_id.exists(), "missing mandatory swap id");
 
     // get the state
     let state: ScMutableMap = ctx.state();
@@ -126,17 +131,17 @@ pub fn func_cancel_swap(ctx: &ScFuncContext) {
     // set the atomic swap to completed
     atomic_swap.finished = 1;
 
-    // save the new atomic swap to state - TODO: should be deleted if the vm supports it
+    // the auction object should be deleted here, unfortunately, the current implementation of the vm does not support it so we simply set the atomic swap to finished
     swap.set_value(&atomic_swap.to_bytes());
 }
 
 pub fn func_finalize_swap(ctx: &ScFuncContext) {
-    // TODO: delete the auction object, free the swap id and transfer the funds - same as for cancel swap
-
     let p = ctx.params();
 
     // get the id where the swap should be accessible
     let param_swap_id = p.get_string(PARAM_SWAP_ID);
+
+    ctx.require(param_swap_id.exists(), "missing mandatory swap id");
 
     // get the state
     let state: ScMutableMap = ctx.state();
@@ -146,7 +151,7 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
     let swap = atomic_swaps.get_bytes(&param_swap_id.value());
 
     // check if swap id exists
-    ctx.require(swap.exists(), "swap id does not exists");
+    ctx.require(swap.exists(), "swap id does not exist");
 
     // parse atomic swap
     let mut atomic_swap = AtomicSwap::from_bytes(&swap.value());
@@ -166,6 +171,10 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
     // check if receiver sent enough coins
     ctx.require(amount == atomic_swap.amount_receiver, "swap is not open anymore");
 
+    // check that no other color is transferred to the smart contract to prevent loosing other tokens
+    let color_length = ctx.incoming().colors().length();
+    ctx.require(color_length <= 1, "only one color is allowed to be transferred to the contract");
+
     // transfer money to the parties
     transfer(ctx, &atomic_swap.address_receiver, &atomic_swap.color_sender, atomic_swap.amount_sender);
     transfer(ctx, &atomic_swap.address_sender, &atomic_swap.color_receiver, atomic_swap.amount_receiver);
@@ -173,12 +182,28 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
     // set the atomic swap to completed
     atomic_swap.finished = 1;
 
-    // save the new atomic swap to state - TODO: should be deleted if the vm supports it
+    // the auction object should be deleted here, unfortunately, the current implementation of the vm does not support it so we simply set the atomic swap to finished
     swap.set_value(&atomic_swap.to_bytes());
 }
 
-pub fn view_get_open_swaps(ctx: &ScViewContext) {
-    // return a specific swap id - maybe also all swaps should be visible in a view
+pub fn view_get_swap_by_id(ctx: &ScViewContext) {
+    let p = ctx.params();
+
+    let param_swap_id = p.get_string(PARAM_SWAP_ID);
+
+    ctx.require(param_swap_id.exists(), "missing mandatory swap id");
+
+    // get the state
+    let state = ctx.state();
+    // get the atomic swap map
+    let atomic_swaps = state.get_map(VAR_ATOMIC_SWAPS);
+    // get the swap with swap_id
+    let swap = atomic_swaps.get_bytes(&param_swap_id.value());
+
+    // check if swap id exists
+    ctx.require(swap.exists(), "swap id does not exist");
+
+    ctx.results().get_bytes(PARAM_SWAP).set_value(&swap.value());
 }
 
 // helper method copied from fairauction example
