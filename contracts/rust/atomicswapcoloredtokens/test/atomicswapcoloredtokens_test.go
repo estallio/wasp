@@ -75,7 +75,7 @@ func TestDeploy(t *testing.T) {
 
 	// ************************************************************************************************
 	// except for the single tokens that are necessary for every SC-call, the state is the same
-	// as at the beginning
+	// as at the beginning now
 	// ************************************************************************************************
 
 	// now deposit the colored coins again
