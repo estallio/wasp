@@ -14,9 +14,9 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     let param_swap_id = p.get_string(PARAM_SWAP_ID);
 
     // next 3 params define from whom, how much and what type of color the sender wants to get for his/her deposit
-    let param_color_receiver = p.get_color(PARAM_COLOR_RECEIVER);
-    let param_amount_receiver = p.get_int64(PARAM_AMOUNT_RECEIVER);
-    let param_address_receiver = p.get_address(PARAM_ADDRESS_RECEIVER);
+    let param_color_recipient = p.get_color(PARAM_COLOR_RECIPIENT);
+    let param_amount_recipient = p.get_int64(PARAM_AMOUNT_RECIPIENT);
+    let param_address_recipient = p.get_address(PARAM_ADDRESS_RECIPIENT);
 
     // next 2 parameters are not absolutely necessary, as they could be extracted from balances
     // it was implemented the following way to keep the effort small
@@ -36,9 +36,9 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     // check if all necessary variables are set - only for unfortunate reasons when posting the tx
     ctx.require(param_color_sender.exists(), "missing mandatory sender color");
     ctx.require(param_amount_sender.exists(), "missing mandatory sender amount");
-    ctx.require(param_color_receiver.exists(), "missing mandatory receiver color");
-    ctx.require(param_amount_receiver.exists(), "missing mandatory receiver amount");
-    ctx.require(param_address_receiver.exists(), "missing mandatory receiver id");
+    ctx.require(param_color_recipient.exists(), "missing mandatory recipient color");
+    ctx.require(param_amount_recipient.exists(), "missing mandatory recipient amount");
+    ctx.require(param_address_recipient.exists(), "missing mandatory recipient id");
     ctx.require(param_swap_id.exists(), "missing swap id");
 
     ctx.log("checking amount now...");
@@ -55,7 +55,7 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     //  fist, we have to define how we save an atomic swap object in the state
     //  as we have to access it later, we should have an unique id for the swap
     //  we should get sure it is possible that multiple agents can place multiple atomic swaps simultaneously
-    //  1. one possible solution is to save it with the receiver and sender id and the color as hash
+    //  1. one possible solution is to save it with the recipient and sender id and the color as hash
     //  and simply restrict the amount of atomic swaps 2 parties are able to start
     //  2. use an array for holding all swaps and simply append the swap objects - there is a upper limit in this case
     //  but we could simply use an swap-array for each 2 agent ids
@@ -77,11 +77,11 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
     // create an atomic swap object to save it in our register
     let atomic_swap = AtomicSwap {
         color_sender: param_color_sender.value(),
-        color_receiver: param_color_receiver.value(),
+        color_recipient: param_color_recipient.value(),
         amount_sender: param_amount_sender.value(),
-        amount_receiver: param_amount_receiver.value(),
+        amount_recipient: param_amount_recipient.value(),
         address_sender: param_address_sender,
-        address_receiver: param_address_receiver.value(),
+        address_recipient: param_address_recipient.value(),
         duration_open: param_duration.value(),
         when_started: ctx.timestamp() / 1000000000,
         // for now, a number is sufficient to model the state, maybe there is any boolean or enum support sometime to model such states
@@ -159,25 +159,25 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
     // check if atomic swap is already finished
     ctx.require(atomic_swap.finished == 0, "swap is already finished");
 
-    // check if the caller of this method is the receiver
-    ctx.require(ctx.caller().address() == atomic_swap.address_receiver, "only the receiver is able to finalize the swap");
+    // check if the caller of this method is the recipient
+    ctx.require(ctx.caller().address() == atomic_swap.address_recipient, "only the recipient is able to finalize the swap");
 
     // check if atomic swap is still open
     ctx.require(ctx.timestamp() / 1000000000 <= atomic_swap.when_started + atomic_swap.duration_open, "swap is not open anymore");
 
-    // get the balances the receiver has sent to the contract
-    let amount = ctx.incoming().balance(&atomic_swap.color_receiver);
+    // get the balances the recipient has sent to the contract
+    let amount = ctx.incoming().balance(&atomic_swap.color_recipient);
 
-    // check if receiver sent enough coins
-    ctx.require(amount == atomic_swap.amount_receiver, "swap is not open anymore");
+    // check if recipient sent enough coins
+    ctx.require(amount == atomic_swap.amount_recipient, "swap is not open anymore");
 
     // check that no other color is transferred to the smart contract to prevent loosing other tokens
     let color_length = ctx.incoming().colors().length();
     ctx.require(color_length <= 1, "only one color is allowed to be transferred to the contract");
 
     // transfer money to the parties
-    transfer(ctx, &atomic_swap.address_receiver, &atomic_swap.color_sender, atomic_swap.amount_sender);
-    transfer(ctx, &atomic_swap.address_sender, &atomic_swap.color_receiver, atomic_swap.amount_receiver);
+    transfer(ctx, &atomic_swap.address_recipient, &atomic_swap.color_sender, atomic_swap.amount_sender);
+    transfer(ctx, &atomic_swap.address_sender, &atomic_swap.color_recipient, atomic_swap.amount_recipient);
 
     // set the atomic swap to completed
     atomic_swap.finished = 1;

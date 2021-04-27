@@ -6,11 +6,11 @@ use wasmlib::*;
 //@formatter:off
 pub struct AtomicSwap {
     pub color_sender:       ScColor,
-    pub color_receiver:     ScColor,
+    pub color_recipient:    ScColor,
     pub amount_sender:      i64,
-    pub amount_receiver:    i64,
+    pub amount_recipient:   i64,
     pub address_sender:     ScAddress,
-    pub address_receiver:  ScAddress,
+    pub address_recipient:  ScAddress,
     pub duration_open:      i64,
     pub when_started:       i64,
     pub finished:           i64,
@@ -22,11 +22,11 @@ impl AtomicSwap {
         let mut decode = BytesDecoder::new(bytes);
         AtomicSwap {
             color_sender: decode.color(),
-            color_receiver: decode.color(),
+            color_recipient: decode.color(),
             amount_sender: decode.int64(),
-            amount_receiver: decode.int64(),
+            amount_recipient: decode.int64(),
             address_sender: decode.address(),
-            address_receiver: decode.address(),
+            address_recipient: decode.address(),
             duration_open: decode.int64(),
             when_started: decode.int64(),
             finished: decode.int64()
@@ -36,11 +36,11 @@ impl AtomicSwap {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut encode = BytesEncoder::new();
         encode.color(&self.color_sender);
-        encode.color(&self.color_receiver);
+        encode.color(&self.color_recipient);
         encode.int64(self.amount_sender);
-        encode.int64(self.amount_receiver);
+        encode.int64(self.amount_recipient);
         encode.address(&self.address_sender);
-        encode.address(&self.address_receiver);
+        encode.address(&self.address_recipient);
         encode.int64(self.duration_open);
         encode.int64(self.when_started);
         encode.int64(self.finished);
