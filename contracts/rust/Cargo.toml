@@ -3,6 +3,9 @@
 
 [workspace]
 members = [
+    "atomicswapcoloredtokens",
+    "atomicswaperc20async",
+    "atomicswaperc20sync",
     "dividend",
     "donatewithfeedback",
     "erc20",
