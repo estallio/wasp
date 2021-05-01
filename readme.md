@@ -1,3 +1,21 @@
+# Changelog:
+- added example contract for atomic swaps using IOTA colored tokens located in [`contracts/rust/atomicswapcoloredtokens`](contracts/rust/atomicswapcoloredtokens)
+- added example contract for atomic swaps using ERC20 tokens on a single smart contract chain located in [`contracts/rust/atomicswaperc20sync`](contracts/rust/atomicswaperc20sync)
+- added example contract for atomic swaps using ERC20 tokens on different smart contract chains located in [`contracts/rust/atomicswaperc20async`](contracts/rust/atomicswaperc20async)
+- added IOTA smart contracts atomic swap slides located at [`IOTA_ATOMIC_SWAPS.pdf`](IOTA_ATOMIC_SWAPS.pdf)
+
+## Enable atomic swaps between IOTA and Ethereum:
+- deploy/use ERC20 on IOTA
+- deploy/use ERC20 on Ethereum
+- adjust swap contracts if necessary:
+    - deploy atomicswaperc20async contract from [`contracts/rust/atomicswaperc20async`](contracts/rust/atomicswaperc20async)
+    - deploy Solidity contract like [this](https://github.com/jchittoda/eth-atomic-swap/blob/master/contracts/AtomicSwapERC20.sol) one
+- start swaps
+
+### Disclaimer:
+The contracts should not be used in productive environments and should be seen as prototypical concepts for atomic swaps on the emerging IOTA smart contract protocol (ISCP).
+
+---
 ![Wasp logo](WASP_logo_dark.png)
 
 # Welcome to the Wasp repository!

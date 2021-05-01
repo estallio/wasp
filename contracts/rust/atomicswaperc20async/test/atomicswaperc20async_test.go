@@ -134,7 +134,7 @@ func TestDeploy(t *testing.T) {
 	checkErc20BalanceOnSc(erc20B, chainB, recipientAgentId, 300)
 	checkErc20BalanceOnSc(erc20B, chainB, contractBIdAsAgentId, 0)
 
-	
+
 	// atomic swap must have been open for at least 200 seconds (greater than 200s)
 	// to get the funds back, fast forward in time to +201 seconds
 	chainA.Env.AdvanceClockBy(201 * time.Second)
