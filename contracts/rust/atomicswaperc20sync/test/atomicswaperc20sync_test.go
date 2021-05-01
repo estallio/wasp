@@ -133,6 +133,11 @@ func TestDeploy(t *testing.T) {
 	checkErc20BalanceOnSc(erc20B, chain, contractIdAsAgentId, 0)
 
 
+	// ************************************************************************************************
+	// the state is the same as at the beginning now
+	// ************************************************************************************************
+
+
 	// client A allows the swap SC to transfer 100 erc20 tokens to the swap contract again
 	req = solo.NewCallParams(erc20A, erc20FuncApprove,
 		erc20ParamDelegation, contractIdAsAgentId,

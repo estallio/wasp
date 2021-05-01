@@ -82,8 +82,8 @@ pub fn func_start_swap(ctx: &ScFuncContext) {
 
     // create an atomic swap object to save it in our register
     let atomic_swap = AtomicSwap {
-        sc_name_sender: param_sc_name_sender.value(),
-        sc_name_recipient: param_sc_name_recipient.value(),
+        erc20_sc_name_sender: param_sc_name_sender.value(),
+        erc20_sc_name_recipient: param_sc_name_recipient.value(),
         amount_sender: param_amount_sender.value(),
         amount_recipient: param_amount_recipient.value(),
         agent_id_recipient: param_agent_id_recipient.value(),
@@ -133,7 +133,7 @@ pub fn func_cancel_swap(ctx: &ScFuncContext) {
 
     // call transfer contract
     ctx.call(
-        ScHname::new(atomic_swap.sc_name_sender.as_str()),
+        ScHname::new(atomic_swap.erc20_sc_name_sender.as_str()),
         ScHname::new(ERC20_FUNC_TRANSFER),
         Some(transfer_from_params),
         None
@@ -177,7 +177,7 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
 
     // get the allowance value from the erc20 contract by calling the view
     let allowance_result_map = ctx.call(
-        ScHname::new(atomic_swap.sc_name_recipient.as_str()),
+        ScHname::new(atomic_swap.erc20_sc_name_recipient.as_str()),
         ScHname::new(ERC20_VIEW_ALLOWANCE),
         Some(allowance_params),
         None
@@ -197,7 +197,7 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
 
     // call transfer contract
     ctx.call(
-        ScHname::new(atomic_swap.sc_name_recipient.as_str()),
+        ScHname::new(atomic_swap.erc20_sc_name_recipient.as_str()),
         ScHname::new(ERC20_FUNC_TRANSFER_FROM),
         Some(transfer_from_params),
         None
@@ -210,7 +210,7 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
 
     // call transfer contract
     ctx.call(
-        ScHname::new(atomic_swap.sc_name_recipient.as_str()),
+        ScHname::new(atomic_swap.erc20_sc_name_recipient.as_str()),
         ScHname::new(ERC20_FUNC_TRANSFER),
         Some(transfer_from_params_sender),
         None
@@ -223,7 +223,7 @@ pub fn func_finalize_swap(ctx: &ScFuncContext) {
 
     // call transfer contract
     ctx.call(
-        ScHname::new(atomic_swap.sc_name_sender.as_str()),
+        ScHname::new(atomic_swap.erc20_sc_name_sender.as_str()),
         ScHname::new(ERC20_FUNC_TRANSFER),
         Some(transfer_from_params_recipient),
         None
