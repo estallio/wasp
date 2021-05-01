@@ -78,8 +78,7 @@ func TestDeploy(t *testing.T) {
 	chain.Env.AssertAddressBalance(sender.Address(), senderColor, 10)
 
 	// ************************************************************************************************
-	// except for the single tokens that are necessary for every SC-call, the state is the same
-	// as at the beginning now
+	// the state is the same as at the beginning now
 	// ************************************************************************************************
 
 	// now deposit the colored coins again
