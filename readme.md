@@ -1,3 +1,11 @@
+#### Changes since fork:
+- 1. May:
+  - Added sample contracts for atomic swaps in git branch `develop`:
+    - [Atomic swaps for colored tokens](https://github.com/estallio/wasp/tree/develop/contracts/rust/atomicswapcoloredtokens) 
+    - [Atomic swaps for ERC20 tokens synchronous](https://github.com/estallio/wasp/tree/develop/contracts/rust/atomicswaperc20sync) 
+    - [Atomic swaps for ERC20 tokens asynchronous](https://github.com/estallio/wasp/tree/develop/contracts/rust/atomicswaperc20async)
+  - Small bugfixes in other sample contracts
+
 ![Wasp logo](WASP_logo_dark.png)
 
 # Welcome to the Wasp repository!
