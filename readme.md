@@ -1,5 +1,5 @@
 #### Changes since fork:
-- 1. May:
+- May 2020:
   - Added sample contracts for atomic swaps in git branch `develop`:
     - [Atomic swaps for colored tokens](https://github.com/estallio/wasp/tree/develop/contracts/rust/atomicswapcoloredtokens) 
     - [Atomic swaps for ERC20 tokens synchronous](https://github.com/estallio/wasp/tree/develop/contracts/rust/atomicswaperc20sync) 
